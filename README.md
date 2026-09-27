@@ -35,7 +35,9 @@ The framework introduces two canonical formulations:
    Cancels $O(\Delta t)$ and $O(\Delta t^2)$ curvature terms identically, scaling the rational denominator perturbation to $O(\Delta t^4)$ and preserving pure asymptotic fourth-order convergence ($p = 4.000$) down to machine precision.
 
 3. **Concurrent Runtime Diagnostic:**  
-   $$\text{is\_throttled} = (\text{den} > 5.0)$$  
+   ```cpp
+   is_throttled = (den > 5.0);
+   ```
    Alerts supervisory control loops with zero FLOP overhead when localized stiff transients trigger step throttling.
 
 ---
