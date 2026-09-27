@@ -1,0 +1,60 @@
+PRATYAKSH ACADEMIC AND NON-COMMERCIAL RESEARCH LICENSE (v1.0)
+Copyright (c) 2026 Pratyaksh Raj. All Rights Reserved.
+Author Contact: pratyakshnarayanlal1@gmail.com
+
+================================================================================
+1. PREAMBLE & PURPOSE
+================================================================================
+The Pratyaksh Framework (including the reference implementation `pratyaksh.hpp`, 
+associated verification suites, and mathematical documentation) is an original 
+computational numerical integrator authored by Pratyaksh Raj.
+
+This License grants rights for scientific evaluation, academic peer review, 
+and non-commercial research reproducibility while strictly protecting the 
+author's exclusive intellectual property and commercial rights.
+
+================================================================================
+2. PERMITTED NON-COMMERCIAL USES (FREE GRANT)
+================================================================================
+Permission is hereby granted, free of charge, to any person or institution obtaining 
+a copy of this software and associated documentation files (the "Software"), to:
+  (a) Inspect, compile, run, and execute the Software for non-commercial academic research;
+  (b) Reproduce and verify the numerical benchmarks published in the manuscript;
+  (c) Use the Software in educational settings and non-commercial open scientific studies;
+subject to the following conditions:
+  - The above copyright notice, author attribution, and this permission notice shall be 
+    included in all copies or substantial portions of the Software.
+  - Any academic paper, technical report, or publication utilizing the Software shall 
+    cite the formal publication as specified in the README.
+
+================================================================================
+3. STRICT COMMERCIAL PROHIBITIONS
+================================================================================
+THE SOFTWARE IS NOT PUBLIC DOMAIN OR UNRESTRICTED OPEN SOURCE.
+
+You MAY NOT:
+  (a) Use, integrate, embed, or link the Software (in source or binary form) in any 
+      commercial product, commercial simulation suite, game engine (e.g., Unreal Engine, 
+      Unity, PhysX, Havok), proprietary robotics controller, or for-profit service;
+  (b) Sell, rent, lease, sublicense, or distribute the Software for commercial gain;
+  (c) Use the Software to provide paid consulting, cloud-based simulation APIs, 
+      or proprietary physics pipelines without an explicit commercial license.
+
+================================================================================
+4. COMMERCIAL LICENSING & INQUIRIES
+================================================================================
+Any commercial entity, enterprise, or proprietary software vendor seeking to evaluate, 
+integrate, or license The Pratyaksh Framework for commercial deployment must obtain 
+an explicit written commercial license from the author:
+  Contact: pratyakshnarayanlal1@gmail.com
+
+================================================================================
+5. NO WARRANTY
+================================================================================
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.

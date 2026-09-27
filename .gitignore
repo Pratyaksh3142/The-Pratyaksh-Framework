@@ -1,0 +1,21 @@
+# Binaries & build artifacts
+test_convergence
+test_ks
+test_burgers
+test_brusselator
+*.o
+*.out
+*.exe
+*.dSYM/
+
+# Python cache
+__pycache__/
+*.pyc
+
+# LaTeX build artifacts
+*.aux
+*.log
+*.out
+*.synctex.gz
+*.bbl
+*.blg

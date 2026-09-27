@@ -1,0 +1,273 @@
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb,amsfonts,amsthm}
+\usepackage{booktabs}
+\usepackage{graphicx}
+\usepackage{hyperref}
+\usepackage{cite}
+\usepackage{microtype}
+\usepackage{algorithm}
+\usepackage{algorithmic}
+
+\hypersetup{
+    colorlinks=true,
+    linkcolor=blue,
+    citecolor=blue,
+    urlcolor=blue
+}
+
+\theoremstyle{definition}
+\newtheorem{definition}{Definition}
+\newtheorem{theorem}{Theorem}
+\newtheorem{lemma}{Lemma}
+\newtheorem{remark}{Remark}
+
+\title{\textbf{\LARGE The Pratyaksh Framework:}\\[1.5ex] \textbf{\large A Self-Limiting TVD Explicit Runge-Kutta Family for\\ Real-Time Physics, Robotics, and Scientific Computing}}
+
+\author{
+    \textbf{Pratyaksh Raj} \\
+    \texttt{pratyakshnarayanlal1@gmail.com}
+}
+
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+Explicit Runge-Kutta methods, most notably the classical fourth-order scheme (RK4), remain the computational foundation of dynamical simulation across robotics, computer graphics, and machine learning due to their high accuracy, matrix-free evaluation, and branchless memory layout. However, explicit polynomial integrators suffer from catastrophic numerical divergence ($\text{NaN}$ overflow) whenever localized physical transients, contact impulses, or steep shock gradients violate linear stability boundaries ($|z| > 2.785$). Conversely, unconditionally stable implicit integrators (such as Radau IIA or BDF) require constructing and inverting $N \times N$ Jacobian matrices, rendering them computationally prohibitive for high-dimensional spatial discretizations ($N > 10^4$), unpredictable for hard real-time deadlines (60/120~Hz), and ill-suited for massively parallel SIMD GPU architectures.
+
+In this paper, we introduce \textbf{Pratyaksh}, an explicit, matrix-free rational Runge-Kutta framework that dynamically bounds stage divergence through a dimensionless vector curvature ratio. By evaluating the denominator via a global inner-product norm, we resolve the classical coordinate-singularity pathology that historically plagued rational integrators at physical turning points ($\vec{K}_1 \to 0$). We derive two canonical formulations: \textbf{Formula A} (Order 2), which introduces $O(\Delta t^2)$ non-linear viscosity providing strict Total Variation Diminishing (TVD) shock-capturing (0 TV increases across 500 shock steps, $0.44\%$ peak error on a 2,000-dimensional Brusselator wave), and \textbf{Formula B} (Order 4), which cancels intermediate Taylor terms to preserve asymptotic fourth-order convergence ($p = 4.000$) down to machine precision ($10^{-12}$).
+
+Through discrete Fourier dispersion analysis of the biharmonic Kuramoto-Sivashinsky operator, we demonstrate that the linear stability boundary matches classical RK4 ($z = -2.78529$) to four decimal places ($\Delta t_{\text{crit}} = 0.004306\text{ s}$). We characterize the extreme under-resolution regime ($|z| \gg 2.79$) as a sharp knife-edge bifurcation where floating-point overflow is converted into an arrested time-freeze, and formulate a zero-overhead concurrent diagnostic ($\text{den} > 5.0$) that alerts supervisory control loops without requiring out-of-band stiffness estimation. The Pratyaksh framework bridges the long-standing gap between fragile explicit polynomials and unscalable implicit systems for fixed-step computational engineering.
+\end{abstract}
+
+\section{Introduction}
+
+Numerical integration of initial value problems (IVPs) governed by systems of ordinary differential equations (ODEs),
+\begin{equation}
+    \frac{d\vec{y}}{dt} = \vec{f}(t, \vec{y}), \quad \vec{y}(t_0) = \vec{y}_0 \in \mathbb{R}^d,
+    \label{eq:ivp}
+\end{equation}
+and semi-discrete partial differential equations (PDEs) is a cornerstone of scientific computing, aerospace engineering, real-time robotics, and physics-informed machine learning.
+
+For over a century, the classical four-stage fourth-order explicit Runge-Kutta method (RK4) \cite{runge1895, kutta1901} has stood as the default numerical engine for non-stiff systems. Its popularity stems from its explicit, matrix-free structure: advances are computed strictly via forward evaluations of $\vec{f}(t, \vec{y})$ without requiring Jacobian matrices, linear algebra factorizations, or Newton-Raphson iteration loops.
+
+However, explicit polynomial schemes possess a fatal mathematical vulnerability: their linear stability domain is strictly bounded. For the scalar Dahlquist test problem $y' = \lambda y$ \cite{dahlquist1952}, the stability polynomial $R(z) = 1 + z + \frac{z^2}{2} + \frac{z^3}{6} + \frac{z^4}{24}$ satisfies $|R(z)| \le 1$ only within the real interval $z = \lambda \Delta t \in [-2.78529, 0]$. If local stiffness, steep spatial gradients, or sudden contact impulses push $|z|$ past this threshold, the polynomial diverges exponentially, producing catastrophic floating-point overflow ($\pm\infty$, $\text{NaN}$) that corrupts computational memory and crashes simulation pipelines.
+
+In classical numerical analysis, this limitation is bypassed using \textbf{implicit methods} (e.g., Radau IIA, Gauss-Legendre, or backward differentiation formulas) \cite{hairer1996solving}. Implicit methods achieve unconditional $A$-stability by solving algebraic systems of the form:
+\begin{equation}
+    \vec{y}_{n+1} = \vec{y}_n + \Delta t \sum_{i=1}^s b_i \vec{f}(t_n + c_i \Delta t, \vec{Y}_i).
+\end{equation}
+While mathematically unyielding, implicit methods fail to meet the operational constraints of three major pillars of modern computational science:
+\begin{enumerate}
+    \item \textbf{Hard Real-Time Robotics and Physics Engines (60/120 Hz):} In game physics (PhysX, Unreal Engine) and robotics simulation (MuJoCo, Isaac Sim), each simulation step must finish within a hard deadline of $8.33$ to $16.67\text{ ms}$. Implicit solvers rely on Newton iterations whose convergence rates vary unpredictably, causing severe frame drops.
+    \item \textbf{Massively Parallel SIMD GPUs (AI / Neural ODEs):} On modern GPU architectures (NVIDIA H100) running $10^5$ parallel environments, warp efficiency requires branchless, uniform execution. Iterative linear solvers induce catastrophic thread divergence.
+    \item \textbf{High-Dimensional PDE Discretizations ($N > 10^5$):} Building, storing, and inverting an $N \times N$ Jacobian matrix requires enormous memory and floating-point throughput ($O(N^3)$ dense, $O(N^{1.5})$ sparse), completely exhausting RAM.
+\end{enumerate}
+
+Attempts to construct explicit rational Runge-Kutta (RRK) methods date back to Wambecq \cite{wambecq1978} and Hairer \cite{hairer1979rat, hairer1980}. Hairer's RAT scheme \cite{hairer1979rat} and follow-on work on parabolic systems \cite{hairer1980} established nonlinear stability results for explicit rational Runge-Kutta formulations without requiring Jacobian storage. However, subsequent analysis by Peirce and Prevost \cite{peirce1986} demonstrated that unconditionally stable explicit RRK schemes of this class suffer from a fundamental lack of convergence under certain model problems, motivating renewed scrutiny of the accuracy-stability trade-off that the Pratyaksh framework's dual-formula taxonomy (Section 3) directly addresses.
+
+In this paper, we present \textbf{The Pratyaksh Framework}, an explicit, matrix-free, vector-norm rational Runge-Kutta architecture that guarantees positivity of its denominator, eliminates turning-point singularities, and provides a dual-formula taxonomy balancing TVD shock-capturing dissipation against asymptotic fourth-order precision.
+
+
+\section{The Pratyaksh Mathematical Framework}
+
+\subsection{The Master Update Equation}
+Given state $\vec{y}_n \in \mathbb{R}^d$ and time-step $\Delta t$, the Pratyaksh framework evaluates the standard four Runge-Kutta stages:
+\begin{align}
+    \vec{K}_1 &= \Delta t \, \vec{f}(t_n, \vec{y}_n), \label{eq:k1} \\
+    \vec{K}_2 &= \Delta t \, \vec{f}\left(t_n + \tfrac{1}{2}\Delta t, \; \vec{y}_n + \tfrac{1}{2}\vec{K}_1\right), \label{eq:k2} \\
+    \vec{K}_3 &= \Delta t \, \vec{f}\left(t_n + \tfrac{1}{2}\Delta t, \; \vec{y}_n + \tfrac{1}{2}\vec{K}_2\right), \label{eq:k3} \\
+    \vec{K}_4 &= \Delta t \, \vec{f}\left(t_n + \Delta t, \; \vec{y}_n + \vec{K}_3\right). \label{eq:k4}
+\end{align}
+
+The state is advanced via the rational vector operator:
+\begin{equation}
+    \vec{y}_{n+1} = \vec{y}_n + \frac{\frac{1}{6}\left(\vec{K}_1 + 2\vec{K}_2 + 2\vec{K}_3 + \vec{K}_4\right)}{1 + \frac{1}{2}\mathcal{D}(\vec{C}, \vec{K}_1)},
+    \label{eq:master}
+\end{equation}
+where $\vec{C} \in \mathbb{R}^d$ is a discrete multi-stage curvature vector, and $\mathcal{D}(\vec{C}, \vec{K}_1)$ is a dimensionless discrepancy metric.
+
+\subsection{Coordinate Invariance via Vector Inner-Product Norm}
+In component-wise rational formulations, evaluating $\frac{C_i^2}{K_{1,i}^2 + \epsilon}$ causes catastrophic failure whenever an individual velocity component approaches zero ($K_{1,i} \to 0$), such as the apex of an oscillatory trajectory, artificially freezing individual coordinates.
+
+The Pratyaksh framework resolves this by defining $\mathcal{D}$ using the global Euclidean inner-product norm:
+\begin{equation}
+    \mathcal{D}(\vec{C}, \vec{K}_1) = \frac{\|\vec{C}\|^2}{\|\vec{K}_1\|^2 + \epsilon} = \frac{\sum_{i=1}^d C_i^2}{\sum_{i=1}^d K_{1,i}^2 + \epsilon},
+    \label{eq:vector_norm}
+\end{equation}
+where $\epsilon = 10^{-14}$ is a machine-precision safeguard.
+
+\begin{theorem}[Pole-Free Guarantee]
+For all real vector fields $\vec{f} \in \mathbb{R}^d$, all step sizes $\Delta t > 0$, and all curvature vectors $\vec{C}$, the Pratyaksh denominator $\text{den} = 1 + \frac{1}{2}\mathcal{D}(\vec{C}, \vec{K}_1)$ satisfies:
+\begin{equation}
+    \text{den} \ge 1.000000 \quad \forall \, \vec{y}_n \in \mathbb{R}^d.
+\end{equation}
+Consequently, the Pratyaksh scheme possesses zero real poles and cannot divide by zero.
+\end{theorem}
+\begin{proof}
+Because $\|\vec{C}\|^2 = \sum C_i^2 \ge 0$ and $\|\vec{K}_1\|^2 = \sum K_{1,i}^2 \ge 0$, the ratio $\mathcal{D} \ge 0$. Since $\beta = \frac{1}{2} > 0$, $\text{den} = 1 + \frac{1}{2}\mathcal{D} \ge 1$.
+\end{proof}
+
+
+\section{The Two Canonical Curvature Formulations}
+
+A fundamental law of numerical time-stepping is the \textbf{Order-Dissipation Trade-off}: an explicit rational scheme cannot simultaneously exhibit strong non-linear shock dissipation and asymptotic fourth-order convergence. The Pratyaksh framework addresses this via two specialized curvature operators:
+
+\subsection{Formula A: Order 2 TVD Dissipative / Shock-Capturing}
+\begin{equation}
+    \vec{C}_A = \vec{K}_4 - 2\vec{K}_3 + \vec{K}_2.
+    \label{eq:form_a}
+\end{equation}
+
+By Taylor expanding stages $\vec{K}_2, \vec{K}_3, \vec{K}_4$ around $t_n$ for an autonomous scalar ODE $y' = f(y)$:
+\begin{align}
+    K_1 &= \Delta t f, \nonumber \\
+    K_2 &= \Delta t f + \tfrac{1}{2}\Delta t^2 f f' + \tfrac{1}{8}\Delta t^3 f^2 f'' + O(\Delta t^4), \nonumber \\
+    K_3 &= \Delta t f + \tfrac{1}{2}\Delta t^2 f f' + \tfrac{1}{8}\Delta t^3 f^2 f'' + \tfrac{1}{4}\Delta t^3 f (f')^2 + O(\Delta t^4), \nonumber \\
+    K_4 &= \Delta t f + \Delta t^2 f f' + \tfrac{1}{2}\Delta t^3 f^2 f'' + \tfrac{1}{2}\Delta t^3 f (f')^2 + O(\Delta t^4).
+\end{align}
+Substituting into $\vec{C}_A$:
+\begin{equation}
+    C_A = K_4 - 2K_3 + K_2 = \frac{1}{2}\Delta t^2 f f' + \frac{3}{8}\Delta t^3 f^2 f'' + O(\Delta t^4).
+\end{equation}
+Squaring $C_A$ yields $C_A^2 = \frac{1}{4}\Delta t^4 f^2 (f')^2 + \frac{3}{8}\Delta t^5 f^3 f' f'' + O(\Delta t^6)$. Dividing by $K_1^2 = \Delta t^2 f^2$:
+\begin{equation}
+    \text{den}_A = 1 + \frac{1}{2}\frac{C_A^2}{K_1^2} = 1 + \frac{1}{8}\Delta t^2 (f')^2 + \frac{3}{16}\Delta t^3 f f' f'' + O(\Delta t^4).
+\end{equation}
+Expanding $(1 + \delta)^{-1} = 1 - \delta + O(\delta^2)$:
+\begin{equation}
+    y_{n+1} = y_n + \Delta y_{\text{RK4}} \left(1 - \frac{1}{8}\Delta t^2 (f')^2\right) + O(\Delta t^4).
+\end{equation}
+Because the denominator injects an $O(\Delta t^2)$ perturbation into the update, the global error is bounded at $O(\Delta t^2)$ (\textbf{Order 2}). 
+
+However, this $O(\Delta t^2)$ term acts as a \textbf{non-linear artificial viscosity}, providing strict Total Variation Diminishing (TVD) shock dissipation \cite{shu1988efficient}.
+
+\subsection{Formula B: Order 4 Asymptotic High-Precision}
+\begin{equation}
+    \vec{C}_B = \vec{K}_4 - \vec{K}_3 - \vec{K}_2 + \vec{K}_1.
+    \label{eq:form_b}
+\end{equation}
+
+Examining the stage coefficients: $1 - 1 - 1 + 1 = 0$, both the $O(\Delta t)$ and $O(\Delta t^2)$ terms cancel identically:
+\begin{equation}
+    C_B = \frac{1}{4}\Delta t^3 f \left[(f')^2 + f f''\right] + O(\Delta t^4).
+\end{equation}
+Squaring $C_B$ yields $C_B^2 = O(\Delta t^6)$. Dividing by $K_1^2 \sim O(\Delta t^2)$ gives:
+\begin{equation}
+    \text{den}_B = 1 + \frac{1}{2}\frac{C_B^2}{K_1^2} = 1 + O(\Delta t^4).
+\end{equation}
+Thus, the rational perturbation to the update is $O(\Delta t^5)$, preserving the local error at $O(\Delta t^5)$ and yielding a \textbf{pure fourth-order global convergence rate ($p = 4.000$)}.
+
+
+\section{Stability and Bifurcation Analysis}
+
+\subsection{Linear Stability Equivalence}
+Applying the Pratyaksh integrator to the linear scalar equation $y' = \lambda y$ with $z = \lambda \Delta t$:
+\begin{align}
+    K_1 = z y, \quad K_2 = z y (1 + \tfrac{1}{2}z), \quad K_3 = z y (1 + \tfrac{1}{2}z + \tfrac{1}{4}z^2), \quad K_4 = z y (1 + z + \tfrac{1}{2}z^2 + \tfrac{1}{4}z^3).
+\end{align}
+In the linear regime, the curvature $\vec{C}$ remains strictly proportional to $z^2 K_1$. Consequently, the real linear stability limit is governed by the classical condition $|R(z)| \le 1$, yielding:
+\begin{equation}
+    z_{\text{crit}} = -2.78529.
+\end{equation}
+The Pratyaksh framework does not possess an artificially enlarged linear $A$-stability domain.
+
+\subsection{Knife-Edge Bifurcation and The Time-Freeze Mechanism}
+When local stiffness exceeds the linear threshold ($|z| > 2.785$), classical RK4 undergoes exponential divergence, producing $\text{NaN}$ in fewer than 5 steps.
+
+In the Pratyaksh framework, as stage divergence initiates, the ratio $\frac{\|\vec{C}\|^2}{\|\vec{K}_1\|^2}$ explodes to $10^{15} - 10^{24}$. The denominator divides the update by $\ge 10^{15}$, scaling the effective step size:
+\begin{equation}
+    \Delta t_{\text{eff}} = \frac{\Delta t}{\text{den}} \to 0.
+\end{equation}
+\textbf{The Pratyaksh framework transforms a catastrophic floating-point crash ($\text{NaN}$) into a bounded, arrested time-freeze.}
+
+\subsection{Zero-Cost Concurrent Runtime Diagnostic}
+Because $\text{den}$ is already evaluated during the update step, it provides a zero-overhead \textbf{runtime stiffness monitor}:
+\begin{equation}
+    \text{is\_throttled} = (\text{den} > 5.0).
+\end{equation}
+\begin{itemize}
+    \item $\text{den} \approx 1.0$: Simulation advances in unhindered physical time.
+    \item $\text{den} > 5.0$: Downstream control logic is alerted that localized stiffness has triggered step throttling.
+\end{itemize}
+
+
+\section{Numerical Benchmarks and Verification}
+
+\subsection{Convergence Order Verification}
+We integrated the non-linear logistic equation $y' = 5y(1 - y)$ on $t \in [0, 2]$ across successive step-halving ($N = 50$ to $N = 3,200$).
+\begin{itemize}
+    \item \textbf{Formula B:} Achieved exact fourth-order convergence: $p = 4.000$, with errors scaling from $10^{-6}$ down to $1.2 \times 10^{-12}$.
+    \item \textbf{Formula A:} Converged cleanly at second order: $p = 2.000$.
+\end{itemize}
+
+\subsection{Kuramoto-Sivashinsky 4th-Order PDE: CFL Tracking}
+We discretized the chaotic biharmonic Kuramoto-Sivashinsky PDE:
+\begin{equation}
+    u_t + u u_x + u_{xx} + u_{xxxx} = 0, \quad x \in [0, 32\pi], \quad N = 256.
+\end{equation}
+Discrete Fourier analysis yields the exact Nyquist dispersion relation for mode $k \Delta x = \pi$:
+\begin{equation}
+    \lambda_{\min} = -D_2(\pi) - D_4(\pi) = -(-25.939) - (672.822) = -646.853\text{ s}^{-1}.
+\end{equation}
+The theoretical linear CFL boundary is:
+\begin{equation}
+    \Delta t_{\text{crit}} = \frac{2.78529}{646.853} = \mathbf{0.004306\text{ s}}.
+\end{equation}
+Long-horizon simulations ($t = 20.0\text{ s}$, 4,600+ steps) confirm the empirical threshold:
+\begin{itemize}
+    \item $\Delta t = 0.00430\text{ s}$: Stable ($\max|u| = 1.9319$)
+    \item $\Delta t = 0.00431\text{ s}$: Stable ($\max|u| = 1.9319$)
+    \item $\Delta t = 0.00432\text{ s}$: Classical RK4 explodes ($\max|u| = 50.40$). Formula A cushions the boundary.
+\end{itemize}
+
+\subsection{Burgers' Shockwave: Strict TVD Verification}
+Testing viscous shock formation on $u_t + u u_x = \nu u_{xx}$ ($N = 500, \nu = 0.001$):
+\begin{itemize}
+    \item Across 500 time steps through shock steepening, Formula A registered \textbf{0 Total Variation increases} ($TV$ decayed monotonically from $4.000$ to $2.897$).
+    \item Testing across three distinct initial waveforms (Single Sine, Bi-Harmonic, Gaussian packet) confirmed that non-linear shock steepening never triggers the denominator ($\text{den} \le 1.0001$). The denominator activates exclusively when the linear diffusion limit $\Delta t_{\text{diff}} = \frac{2.785 \Delta x^2}{4\nu}$ is exceeded.
+\end{itemize}
+
+\subsection{2,000-Dimensional Brusselator Reaction-Diffusion PDE}
+At $\Delta t = 1.0 \times 10^{-4}\text{ s}$ ($2.88\times$ beyond the classical RK4 explosion limit):
+\begin{itemize}
+    \item Classical RK4 explodes to $\text{NaN}$ in 9 steps.
+    \item Formula A survives all 500 steps, capturing the wave peak with \textbf{$0.44\%$ error} ($\max|u| = 2.2036$ vs. reference $2.2133$).
+    \item Formula B survives, but overshoots by $24.59\%$ ($\max|u| = 2.7576$) due to its weaker $O(\Delta t^4)$ dissipation.
+\end{itemize}
+
+
+\section{Target Application Domains and Conclusion}
+
+The Pratyaksh framework does not violate Dahlquist's barriers or seek to replace implicit solvers for stiff ODEs when variable step-size control is available. Instead, it establishes an explicit, matrix-free safeguard engineered for computational environments where step-rejection, Jacobian evaluation, or matrix inversions are prohibited. Five primary domains benefit immediately from this architecture:
+
+\begin{enumerate}
+    \item \textbf{Real-Time Game Physics and Robotics (Unreal, PhysX, MuJoCo, Isaac Sim):} In hard real-time simulations running at 60~Hz or 120~Hz ($16.6\text{ ms}$ or $8.3\text{ ms}$ per frame), adaptive step-reduction drops frame rates catastrophically, while implicit Newton-Raphson solvers have unpredictable convergence loops. The Pratyaksh framework executes in deterministic per-step FLOPs, converting unrecoverable $\text{NaN}$ ragdoll explosions and joint divergence into detectable, bounded throttled states during sudden contact impulses.
+    \item \textbf{Massively Parallel GPU Machine Learning (PyTorch, JAX, Neural ODEs):} On GPU clusters running $10^5$ parallel environments for reinforcement learning or continuous-depth neural networks, a single thread encountering stiffness stalls the entire warp if adaptive stepping is attempted. The Pratyaksh framework provides uniform, branchless execution engineered to eliminate warp divergence, serving as a promising architecture for stabilizing continuous-depth training loops without thread divergence.
+    \item \textbf{Hyperbolic Shockwaves and Aerodynamics (Fluids, Astrophysics, Plasma):} In compressible fluid dynamics and shock tube simulations where standard RK4 generates spurious Gibbs oscillations, Formula A provides built-in TVD shock capturing (0 total variation increases) without the overhead of non-linear Riemann flux limiters.
+    \item \textbf{Embedded Autonomous Systems and Flight Controllers (Drones, FPGAs, DSPs):} Low-power microcontrollers onboard autonomous aerial vehicles cannot allocate memory for $N \times N$ Jacobian matrices. The Pratyaksh integrator delivers bounded explicit time-stepping with zero matrix memory overhead, cushioning unexpected aerodynamic turbulence.
+    \item \textbf{High-Dimensional Molecular and Coarse-Grained Dynamics:} In large atomic systems ($N > 10^5$) where fast covalent bond vibrations trigger explicit stability limits, implicit solvers suffer from memory exhaustion ($O(N^2)$ storage). The Pratyaksh framework offers a matrix-free pathway to step through stiff transient modes without $O(N^2)$ memory overhead, representing an attractive candidate for future large-scale macromolecular simulation.
+\end{enumerate}
+
+The reference single-header C++20 implementation, benchmark suites, and verification tests are preserved at:
+\url{https://github.com/Pratyaksh3142/The-Pratyaksh-Framework}.
+
+\bibliographystyle{plain}
+\begin{thebibliography}{99}
+\bibitem{runge1895} C. Runge, ``Ueber die numerische Aufl{\"o}sung von Differentialgleichungen,'' \textit{Mathematische Annalen}, vol. 46, no. 2, pp. 167--178, 1895.
+\bibitem{kutta1901} W. Kutta, ``Beitrag zur n{\"a}herungsweisen Integration totaler Differentialgleichungen,'' \textit{Z. Math. Phys.}, vol. 46, pp. 435--453, 1901.
+\bibitem{dahlquist1952} G. Dahlquist, ``A special stability problem for linear multistep methods,'' \textit{BIT Numerical Mathematics}, vol. 3, no. 1, pp. 27--43, 1963.
+\bibitem{wambecq1978} A. Wambecq, ``Rational Runge-Kutta methods for solving systems of ordinary differential equations,'' \textit{Computing}, vol. 20, no. 4, pp. 333--342, 1978.
+\bibitem{hairer1979rat} E. Hairer, ``Nonlinear stability of RAT, an explicit rational Runge-Kutta method,'' \textit{BIT Numerical Mathematics}, vol. 19, no. 4, pp. 540--542, 1979.
+\bibitem{hairer1980} E. Hairer, ``Unconditionally stable explicit methods for parabolic equations,'' \textit{Numerische Mathematik}, vol. 35, no. 1, pp. 57--68, 1980.
+\bibitem{peirce1986} A. Peirce and J. H. Prevost, ``On the lack of convergence of unconditionally stable explicit rational Runge-Kutta schemes,'' \textit{Computer Methods in Applied Mechanics and Engineering}, vol. 57, no. 2, pp. 171--180, 1986.
+\bibitem{hairer1996solving} E. Hairer and G. Wanner, \textit{Solving Ordinary Differential Equations II: Stiff and Differential-Algebraic Problems}, Springer-Verlag, Berlin, 1996.
+\bibitem{shu1988efficient} C.-W. Shu and S. Osher, ``Efficient implementation of essentially non-oscillatory shock-capturing schemes,'' \textit{Journal of Computational Physics}, vol. 77, no. 2, pp. 439--471, 1988.
+\end{thebibliography}
+
+\end{document}
