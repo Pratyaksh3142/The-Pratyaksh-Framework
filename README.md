@@ -161,13 +161,6 @@ SUCCESS: The Pratyaksh Framework autonomously damped the shock.
 ```
 </details>
 
-### PyTorch / JAX & The Adjoint Method
-The Pratyaksh Integrator uses only basic operations (addition, multiplication, and a single differentiable vector-norm division). This means you can use **Direct Autograd** (backprop-through-time) without custom implicit differentiation rules. 
-
-If memory is a bottleneck, you can plug the Pratyaksh Integrator directly into the **$O(1)$ Adjoint Method** to integrate backward explicitly, bypassing the $O(N^3)$ Jacobian bottleneck while remaining completely immune to NaN explosions.
-
----
-
 
 ### Pure Mathematical Implementation (Python Example)
 Because the framework is completely explicit, you can implement the core math in any language in under 15 lines of code:
