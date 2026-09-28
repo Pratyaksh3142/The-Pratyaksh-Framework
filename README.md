@@ -162,6 +162,37 @@ SUCCESS: The Pratyaksh Framework autonomously damped the shock.
 </details>
 
 
+
+## The Pratyaksh Framework: Core Mathematical Formulation
+
+Given an initial value problem $\frac{d\vec{y}}{dt} = \vec{f}(t, \vec{y})$, the state is updated via the rational operator:
+
+$$ \vec{y}_{n+1} = \vec{y}_n + \frac{\frac{1}{6}\left(\vec{K}_1 + 2\vec{K}_2 + 2\vec{K}_3 + \vec{K}_4\right)}{1 + \frac{1}{2}\mathcal{D}(\vec{C}, \vec{K}_1)} $$
+
+where the standard Runge-Kutta stages are:
+* $\vec{K}_1 = \Delta t \vec{f}(t, \vec{y}_n)$
+* $\vec{K}_2 = \Delta t \vec{f}(t + \frac{\Delta t}{2}, \vec{y}_n + \frac{\vec{K}_1}{2})$
+* $\vec{K}_3 = \Delta t \vec{f}(t + \frac{\Delta t}{2}, \vec{y}_n + \frac{\vec{K}_2}{2})$
+* $\vec{K}_4 = \Delta t \vec{f}(t + \Delta t, \vec{y}_n + \vec{K}_3)$
+
+### The Discrepancy Metric (Vector Norm)
+The denominator is regulated by $\mathcal{D}$, which evaluates the stage divergence via a global Euclidean inner-product norm, protected by a machine-epsilon floor ($\epsilon = 10^{-14}$) to prevent division by zero in equilibrium states:
+
+$$ \mathcal{D}(\vec{C}, \vec{K}_1) = \frac{\|\vec{C}\|^2}{\|\vec{K}_1\|^2 + \epsilon} = \frac{\sum_{i=1}^d C_i^2}{\sum_{i=1}^d K_{1,i}^2 + 10^{-14}} $$
+
+### The Canonical Formulations
+The framework introduces two distinct curvature vectors ($\vec{C}$) depending on the required physical constraints:
+
+**1. Formula A (Order 2 TVD Dissipative):**
+$$ \vec{C}_A = \vec{K}_4 - 2\vec{K}_3 + \vec{K}_2 $$
+*Mechanism:* Injects $O(\Delta t^2)$ non-linear artificial viscosity into the denominator. This provides strict Total Variation Diminishing (TVD) shock capturing, guaranteeing exactly $0$ Total Variation increases across steep shock formations.
+
+**2. Formula B (Order 4 Asymptotic High-Precision):**
+$$ \vec{C}_B = \vec{K}_4 - \vec{K}_3 - \vec{K}_2 + \vec{K}_1 $$
+*Mechanism:* Cancels the $O(\Delta t)$ and $O(\Delta t^2)$ curvature terms identically. This scales the rational denominator perturbation down to $O(\Delta t^4)$, preserving pure asymptotic fourth-order convergence ($p = 4.000$) down to machine precision while still acting as a shock absorber during infinite-stiffness transients.
+
+---
+
 ### Pure Mathematical Implementation (Python Example)
 Because the framework is completely explicit, you can implement the core math in any language in under 15 lines of code:
 
