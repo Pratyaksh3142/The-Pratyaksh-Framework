@@ -5,11 +5,11 @@
 [![License: CC BY-NC-SA 4.0](https://img.shields.io/badge/License-CC_BY--NC--SA_4.0-lightgrey.svg)](https://creativecommons.org/licenses/by-nc-sa/4.0/)
 [![Preprint](https://img.shields.io/badge/Preprint-Zenodo-blue.svg)](https://zenodo.org/records/23012055)
 
-**A Self-Limiting TVD Explicit Runge-Kutta Family for Real-Time Physics, Robotics, and Scientific Computing**
+**A Universal, Matrix-Free O(N) Autonomous Curvature-Damped Numerical Solver for Generative AI (Diffusion/Flow Models), Aerodynamic CFD Shocks, and Real-Time Physics**
 
 **Author:** Pratyaksh Raj  
 **Contact:** `pratyakshnarayanlal1@gmail.com`  
-**Manuscript:** *The Pratyaksh Framework: A Self-Limiting TVD Explicit Runge-Kutta Family for Real-Time Physics, Robotics, and Scientific Computing* (arXiv: math.NA / cs.CE)
+**Manuscript:** *The Pratyaksh Framework: A Universal O(N) Autonomous Curvature-Damped Runge-Kutta Family for Generative AI, Aerodynamic CFD, and Physical Intelligence* (arXiv: math.NA / cs.CE / cs.LG)
 
 ---
 
