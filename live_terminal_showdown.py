@@ -36,7 +36,7 @@ BOLD = '\033[1m'
 h_rk4 = np.array([2.0, 2.0])
 h_pr = np.array([2.0, 2.0])
 dt = 0.028
-steps = 25
+steps = 120
 
 print(f"\n{BOLD}========================================================================{RESET}")
 print(f"{BOLD} LIVE TERMINAL SHOWDOWN: Classical RK4  vs.  The Pratyaksh Framework{RESET}")
