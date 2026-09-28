@@ -13,6 +13,21 @@
 
 ---
 
+## Machine Learning & Neural ODEs (Stiff Latent Spaces)
+
+In continuous-depth ML (Neural ODEs), weight matrices often learn highly compressed, "stiff" latent spaces. Standard explicit solvers like RK4 or DOPRI5 suffer from catastrophic NaN explosions during these stiff transients, forcing the network to take infinitely small time-steps. The industry workaround is to use Implicit solvers (like BDF), which require computing massive $O(N^3)$ Jacobian matrices that destroy GPU parallelism.
+
+**The Pratyaksh Framework** solves this by acting as an autonomous mathematical shock-absorber. It remains 100% explicit and matrix-free, yet gracefully navigates stiff latent manifolds without exploding.
+
+![Pratyaksh vs RK4 Neural ODE Showdown](benchmarks/neural_ode/showdown_animation.gif)
+
+### Live Terminal Showdown
+Running the stiff Neural ODE benchmark (`python3 live_terminal_showdown.py`) demonstrates RK4 mathematically detonating, while the Pratyaksh framework automatically damps the shock:
+
+```text
+ Step | Time   | Pratyaksh 'u'       | Classical RK4 'u'   | Status
+------------------------------------------------------------------------
+
 ## Overview
 
 The **Pratyaksh Framework** is an explicit, matrix-free rational Runge-Kutta integrator designed to prevent catastrophic numerical divergence ($\text{NaN}$ overflow) without the prohibitive $O(N^3)$ computational and memory overhead of implicit Jacobian solvers.
@@ -43,20 +58,6 @@ The framework introduces two canonical formulations:
 
 ---
 
-## Machine Learning & Neural ODEs (Stiff Latent Spaces)
-
-In continuous-depth ML (Neural ODEs), weight matrices often learn highly compressed, "stiff" latent spaces. Standard explicit solvers like RK4 or DOPRI5 suffer from catastrophic NaN explosions during these stiff transients, forcing the network to take infinitely small time-steps. The industry workaround is to use Implicit solvers (like BDF), which require computing massive $O(N^3)$ Jacobian matrices that destroy GPU parallelism.
-
-**The Pratyaksh Framework** solves this by acting as an autonomous mathematical shock-absorber. It remains 100% explicit and matrix-free, yet gracefully navigates stiff latent manifolds without exploding.
-
-![Pratyaksh vs RK4 Neural ODE Showdown](benchmarks/neural_ode/showdown_animation.gif)
-
-### Live Terminal Showdown
-Running the stiff Neural ODE benchmark (`python3 live_terminal_showdown.py`) demonstrates RK4 mathematically detonating, while the Pratyaksh framework automatically damps the shock:
-
-```text
- Step | Time   | Pratyaksh 'u'       | Classical RK4 'u'   | Status
-------------------------------------------------------------------------
  010  | 0.28s  |       3.112062  | 149356047.82  | 🚨 RK4 Diverging!
  011  | 0.31s  |       3.257527  | 931593411.06  | 🚨 RK4 Diverging!
  012  | 0.34s  |       3.410566  | 5810720740.52 | 🚨 RK4 Diverging!
