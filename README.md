@@ -1,8 +1,9 @@
 # The Pratyaksh Framework
 
 [![C++20](https://img.shields.io/badge/Language-C%2B%2B20-blue.svg)](https://en.cppreference.com/w/cpp/20)
-[![License: Academic Research](https://img.shields.io/badge/License-Non--Commercial_Research-red.svg)](LICENSE)
-[![arXiv](https://img.shields.io/badge/arXiv-math.NA%20%7C%20cs.CE-b31b1b.svg)](https://arxiv.org)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.23012055.svg)](https://doi.org/10.5281/zenodo.23012055)
+[![License: CC BY-NC-SA 4.0](https://img.shields.io/badge/License-CC_BY--NC--SA_4.0-lightgrey.svg)](https://creativecommons.org/licenses/by-nc-sa/4.0/)
+[![Preprint](https://img.shields.io/badge/Preprint-Zenodo-blue.svg)](https://zenodo.org/records/23012055)
 
 **A Self-Limiting TVD Explicit Runge-Kutta Family for Real-Time Physics, Robotics, and Scientific Computing**
 
@@ -125,9 +126,10 @@ If you utilize the Pratyaksh Framework in scientific research, please cite:
 @article{raj2026pratyaksh,
   title={The Pratyaksh Framework: A Self-Limiting TVD Explicit Runge-Kutta Family for Real-Time Physics, Robotics, and Scientific Computing},
   author={Raj, Pratyaksh},
-  journal={arXiv preprint arXiv:2609.XXXXX},
+  journal={Zenodo Preprints},
   year={2026},
-  url={https://github.com/Pratyaksh3142/The-Pratyaksh-Framework}
+  doi={10.5281/zenodo.23012055},
+  url={https://doi.org/10.5281/zenodo.23012055}
 }
 ```
 

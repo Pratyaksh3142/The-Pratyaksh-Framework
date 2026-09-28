@@ -19,3 +19,24 @@ __pycache__/
 *.synctex.gz
 *.bbl
 *.blg
+
+# Local scratch scripts and internal generators
+make_*.py
+extreme_*.py
+force_*.py
+fix_*.py
+generate_*.py
+zoom_*.py
+test_comet_*.py
+test_truth.py
+test_writer.py
+accuracy_test*.py
+orbit*.py
+pendulum_*.py
+shockwave_*.py
+fluid_dynamics_*.py
+vanderpol_*.py
+airfoil_cfd.py
+vdp_stress_test.py
+*.png
+*.gif
