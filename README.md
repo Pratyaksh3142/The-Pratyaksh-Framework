@@ -184,11 +184,15 @@ $$ \mathcal{D}(\vec{C}, \vec{K}_1) = \frac{\|\vec{C}\|^2}{\|\vec{K}_1\|^2 + \eps
 The framework introduces two distinct curvature vectors ($\vec{C}$) depending on the required physical constraints:
 
 **1. Formula A (Order 2 TVD Dissipative):**
+
 $$ \vec{C}_A = \vec{K}_4 - 2\vec{K}_3 + \vec{K}_2 $$
+
 *Mechanism:* Injects $O(\Delta t^2)$ non-linear artificial viscosity into the denominator. This provides strict Total Variation Diminishing (TVD) shock capturing, guaranteeing exactly $0$ Total Variation increases across steep shock formations.
 
 **2. Formula B (Order 4 Asymptotic High-Precision):**
+
 $$ \vec{C}_B = \vec{K}_4 - \vec{K}_3 - \vec{K}_2 + \vec{K}_1 $$
+
 *Mechanism:* Cancels the $O(\Delta t)$ and $O(\Delta t^2)$ curvature terms identically. This scales the rational denominator perturbation down to $O(\Delta t^4)$, preserving pure asymptotic fourth-order convergence ($p = 4.000$) down to machine precision while still acting as a shock absorber during infinite-stiffness transients.
 
 ---
