@@ -168,6 +168,31 @@ If memory is a bottleneck, you can plug the Pratyaksh Integrator directly into t
 
 ---
 
+
+### Pure Mathematical Implementation (Python Example)
+Because the framework is completely explicit, you can implement the core math in any language in under 15 lines of code:
+
+```python
+def pratyaksh_step(h, dt, f):
+    # Standard RK4 Stages
+    k1 = dt * f(h)
+    k2 = dt * f(h + 0.5 * k1)
+    k3 = dt * f(h + 0.5 * k2)
+    k4 = dt * f(h + k3)
+    
+    # 1. Classical Numerator
+    numerator = (k1 + 2*k2 + 2*k3 + k4) / 6.0
+    
+    # 2. The Pratyaksh Curvature Vector (Formula B)
+    C = k4 - k3 - k2 + k1 
+    
+    # 3. The Pratyaksh Rational Denominator (The Shock Absorber)
+    denominator = 1.0 + 0.5 * np.sum(C**2) / (np.sum(k1**2) + 1e-14)
+    
+    # Final State Update
+    return h + (numerator / denominator)
+```
+
 ## Quickstart (Single-Header C++20)
 
 The entire solver is contained in a single self-contained C++20 header file: [`pratyaksh.hpp`](pratyaksh.hpp).
