@@ -207,7 +207,7 @@ $$D = (\alpha \hat{\mathbf{C}})^2 \sim (\mathcal{O}(z^4))^2 = \mathcal{O}(z^8)$$
 Consequently, the step displacement fraction satisfies:
 $$\lim_{\text{Re}(z) \to -\infty} \Delta y = \lim_{z \to -\infty} \frac{\mathbf{N}}{6 + D} \propto \frac{\mathcal{O}(z^4)}{\mathcal{O}(z^8)} = \mathcal{O}\left(\frac{1}{z^4}\right) \to \mathbf{0}$$
 And the total amplification factor strictly asymptotes to:
-$$\mathbf{\lim_{\text{Re}(z) \to -\infty} |R_{\text{Pratyaksh}}(z)| = 1.0000}$$
+$$\lim_{\text{Re}(z) \to -\infty} |R_{\text{Pratyaksh}}(z)| = 1.0000$$
 Pratyaksh-II cannot blow up on the stiff real axis because the denominator's growth degree ($\mathcal{O}(z^8)$) strictly overpowers the numerator's growth degree ($\mathcal{O}(z^4)$), dynamically throttling the update to zero.
 
 ---
