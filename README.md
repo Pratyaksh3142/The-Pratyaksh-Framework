@@ -201,13 +201,29 @@ $$R_{\text{DOPRI5}}(z) \sim \frac{z^5}{120} \to \infty, \quad R_{\text{RK4}}(z) 
 Because there is no denominator, the step update detonates exponentially into **$10^{12}$ and crashes into `NaN`**.
 
 In **Pratyaksh-II**, the state update is self-regulated by the scale-normalized stage difference:
-$$\mathbf{C} = \mathbf{k}_4 - \mathbf{k}_3 - \mathbf{k}_2 + \mathbf{k}_1 = \frac{1}{4} z^3(1 + z) y_n \sim \mathcal{O}(z^4)$$
+
+$$
+\mathbf{C} = \mathbf{k}_4 - \mathbf{k}_3 - \mathbf{k}_2 + \mathbf{k}_1 = \frac{1}{4} z^3(1 + z) y_n \sim \mathcal{O}(z^4)
+$$
+
 The denominator guardrail expands quadratically:
-$$D = (\alpha \hat{\mathbf{C}})^2 \sim (\mathcal{O}(z^4))^2 = \mathcal{O}(z^8)$$
+
+$$
+D = (\alpha \hat{\mathbf{C}})^2 \sim (\mathcal{O}(z^4))^2 = \mathcal{O}(z^8)
+$$
+
 Consequently, the step displacement fraction satisfies:
-$$\lim_{\text{Re}(z) \to -\infty} \Delta y = \lim_{z \to -\infty} \frac{\mathbf{N}}{6 + D} \propto \frac{\mathcal{O}(z^4)}{\mathcal{O}(z^8)} = \mathcal{O}\left(\frac{1}{z^4}\right) \to \mathbf{0}$$
+
+$$
+\lim_{\text{Re}(z) \to -\infty} \Delta y = \lim_{z \to -\infty} \frac{\mathbf{N}}{6 + D} \propto \frac{\mathcal{O}(z^4)}{\mathcal{O}(z^8)} = \mathcal{O}\left(\frac{1}{z^4}\right) \to \mathbf{0}
+$$
+
 And the total amplification factor strictly asymptotes to:
-$$\lim_{\text{Re}(z) \to -\infty} |R_{\text{Pratyaksh}}(z)| = 1.0000$$
+
+$$
+\lim_{\text{Re}(z) \to -\infty} |R_{\text{Pratyaksh}}(z)| = 1.0000
+$$
+
 Pratyaksh-II cannot blow up on the stiff real axis because the denominator's growth degree ($\mathcal{O}(z^8)$) strictly overpowers the numerator's growth degree ($\mathcal{O}(z^4)$), dynamically throttling the update to zero.
 
 ---
