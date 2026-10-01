@@ -1,14 +1,13 @@
 import numpy as np
 
-def pratyaksh_step(f, t, y, h, alpha=0.1, beta=2.0, atol=1e-6):
+def pratyaksh_step(f, t, y, h, alpha=0.1, beta=2.0, atol=1e-12):
     k1 = h * f(t, y)
     k2 = h * f(t + 0.5 * h, y + 0.5 * k1)
     k3 = h * f(t + 0.5 * h, y + 0.5 * k2)
     k4 = h * f(t + h, y + k3)
     
     C = k4 - k3 - k2 + k1
-    max_k = max(np.linalg.norm(k1), np.linalg.norm(k4))
-    scale = np.linalg.norm(y) + max_k + atol
+    scale = np.linalg.norm(y) + np.linalg.norm(k1) + atol
     C_hat = np.linalg.norm(C) / scale
     
     D = (alpha * C_hat)**beta
