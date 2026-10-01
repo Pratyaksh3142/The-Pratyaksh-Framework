@@ -100,10 +100,10 @@ with locked parameters $\alpha = 0.1$ and $\beta = 2.0$.
 \centering
 \begin{tikzpicture}[
     node distance=1.5cm and 2.0cm,
-    box/.style={rectangle, draw=blue!70, fill=blue!5, rounded corners, minimum width=3.2cm, minimum height=0.9cm, text centered, font=\small},
-    calcnode/.style={rectangle, draw=teal!70, fill=teal!5, rounded corners, minimum width=3.8cm, minimum height=0.9cm, text centered, font=\small},
-    guardnode/.style={rectangle, draw=red!70, fill=red!5, rounded corners, minimum width=4.5cm, minimum height=0.9cm, text centered, font=\small},
-    outputnode/.style={rectangle, draw=green!70, fill=green!10, rounded corners, minimum width=3.5cm, minimum height=0.9cm, text centered, font=\small\bfseries},
+    box/.style={rectangle, draw=blue!70, fill=blue!5, rounded corners, minimum width=3.5cm, minimum height=0.9cm, align=center, font=\small},
+    calcnode/.style={rectangle, draw=teal!70, fill=teal!5, rounded corners, minimum width=4.0cm, minimum height=1.0cm, align=center, font=\small},
+    guardnode/.style={rectangle, draw=red!70, fill=red!5, rounded corners, minimum width=4.8cm, minimum height=1.0cm, align=center, font=\small},
+    outputnode/.style={rectangle, draw=green!70, fill=green!10, rounded corners, minimum width=3.8cm, minimum height=1.0cm, align=center, font=\small\bfseries},
     arrow/.style={thick, ->, >=stealth, color=gray!80}
 ]
 
@@ -274,14 +274,22 @@ $-1000.0$ & $9.99 \times 10^2$ & $4.15 \times 10^{10}$ & $8.29 \times 10^{12}$ &
 
 \begin{figure}[htbp]
 \centering
-\includegraphics[width=0.92\linewidth]{dahlquist_industry_showdown.png}
+\IfFileExists{dahlquist_industry_showdown.png}{%
+    \includegraphics[width=0.92\linewidth]{dahlquist_industry_showdown.png}%
+}{%
+    \fbox{\parbox{0.9\linewidth}{\centering \vspace{1.5cm} \textbf{[Figure: Industry Architecture Showdown]}\\\small (Upload \texttt{dahlquist_industry_showdown.png} to Overleaf to render this graph)\\ \vspace{1.5cm}}}%
+}
 \caption{Industry Architecture Showdown along the stiff Dahlquist axis ($\text{Re}(z) \in [-100, 0]$). Classical RK4 and DOPRI5 diverge exponentially, while Pratyaksh-II cleanly asymptotes to the absolute stability threshold $|R|=1.0$.}
 \label{fig:industry_showdown}
 \end{figure}
 
 \begin{figure}[htbp]
 \centering
-\includegraphics[width=0.88\linewidth]{dahlquist_stability_showdown.png}
+\IfFileExists{dahlquist_stability_showdown.png}{%
+    \includegraphics[width=0.88\linewidth]{dahlquist_stability_showdown.png}%
+}{%
+    \fbox{\parbox{0.88\linewidth}{\centering \vspace{1.5cm} \textbf{[Figure: 2D Complex Stability Boundary]}\\\small (Upload \texttt{dahlquist_stability_showdown.png} to Overleaf to render this graph)\\ \vspace{1.5cm}}}%
+}
 \caption{Full 2D Dahlquist stability boundary in the complex plane $\mathbb{C}$. The self-regulating denominator ensures stability along stiff axes while preserving classical 4th-order accuracy at the origin.}
 \label{fig:complex_stability}
 \end{figure}
