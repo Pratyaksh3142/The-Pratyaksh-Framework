@@ -46,7 +46,10 @@
   </div>
   <div class="row">Wave Stiffness <input id="stiff" type="range" min="50" max="350" step="10" value="140"><span id="stiffV">140</span></div>
   <button class="shock-btn" onclick="triggerWaveShock()">💥 Trigger 10G Rogue Wave Shock</button>
-  <button class="solver-btn" style="margin-top:6px; width:100%;" onclick="rebootPhysics()">↺ Reboot Boat & Player</button>
+  <div style="display:flex; gap:6px; margin-top:8px;">
+    <button id="btn-toggle-boat" class="solver-btn" style="flex:1; background:rgba(46,204,113,0.25); border-color:#2ecc71; color:#00ff88;" onclick="toggleBoatState()">🚤 Drive Boat (E)</button>
+    <button class="solver-btn" style="flex:1;" onclick="rebootPhysics()">↺ Reset Beach</button>
+  </div>
   <h3 style="margin-top:12px">Environment</h3>
   <div class="row">Time of day <input id="time" type="range" min="5.6" max="22.0" step="0.01" value="17.25"><span id="timeV"></span></div>
   <div class="row">Animate sun <input id="anim" type="checkbox"></div>
@@ -495,11 +498,12 @@ function seaMap(px, pz, it, t) {
 }
 
 // ---------- Game Objects & Setup ----------
-let spawnX = 0, spawnZ = -800;
-while(terrainH(spawnX, spawnZ, 6) < 1.0 && spawnZ > -2000) spawnZ -= 10;
-const player = { pos:[spawnX, terrainH(spawnX,spawnZ,6)+2, spawnZ], vel:[0,0,0], onGround:false, state:'walk' };
-const boat = { pos:[spawnX+15, 0, spawnZ+25], vel:[0,0,0], yaw:1.5, mat:[1,0,0,0,1,0,0,0,1], invMat:[1,0,0,0,1,0,0,0,1] };
-const cam = { pos:[0,0,0], yaw:2.0, pitch:0.1 };
+let spawnX = -18.0, spawnZ = -662.0;
+const player = { pos:[spawnX, terrainH(spawnX,spawnZ,6)+1.6, spawnZ], vel:[0,0,0], onGround:true, state:'walk' };
+let boatSpawnX = -18.0, boatSpawnZ = -655.0;
+let boatSpawnY = seaMap(boatSpawnX, boatSpawnZ, 4, 0);
+const boat = { pos:[boatSpawnX, boatSpawnY, boatSpawnZ], vel:[0,0,0], yaw:0.0, mat:[1,0,0,0,1,0,0,0,1], invMat:[1,0,0,0,1,0,0,0,1] };
+const cam = { pos:[spawnX, terrainH(spawnX,spawnZ,6)+1.6, spawnZ], yaw:0.0, pitch:-0.05 };
 
 const keys={}; let ePressed = false;
 addEventListener('keydown',e=>{ keys[e.code]=true; if(e.code==='KeyH') $('toggle').click(); if(e.code==='KeyE') ePressed=true; });
@@ -592,19 +596,40 @@ window.triggerWaveShock = function() {
     boat.vel[2] += (Math.random() - 0.5) * 20.0;
 };
 
+window.toggleBoatState = function() {
+    try { initAudio(); } catch(e){}
+    if (hasDetonated) {
+        window.rebootPhysics();
+        return;
+    }
+    if (player.state === 'walk') {
+        player.state = 'boat';
+        if ($('btn-toggle-boat')) $('btn-toggle-boat').textContent = '🚶 Exit Boat (E)';
+    } else {
+        player.state = 'walk';
+        let eject = [Math.sin(boat.yaw + Math.PI/2)*3.5, 2, Math.cos(boat.yaw + Math.PI/2)*3.5];
+        player.pos[0] = boat.pos[0] + eject[0];
+        player.pos[1] = Math.max(boat.pos[1] + eject[1], terrainH(player.pos[0], player.pos[2], 7)+2);
+        player.pos[2] = boat.pos[2] + eject[2];
+        player.vel = [0, 4, 0];
+        if ($('btn-toggle-boat')) $('btn-toggle-boat').textContent = '🚤 Drive Boat (E)';
+    }
+};
+
 window.rebootPhysics = function() {
     hasDetonated = false;
     $('alarm-banner').style.display = 'none';
-    let pX = player.pos[0], pZ = player.pos[2];
-    if (isNaN(pX) || !isFinite(pX) || Math.abs(pX) > 5000) {
-        pX = spawnX; pZ = spawnZ;
-        player.pos = [pX, terrainH(pX, pZ, 6) + 2, pZ];
-        player.vel = [0, 0, 0];
-    }
-    let sY = seaMap(pX + 15, pZ + 25, 4, simTime);
-    boat.pos = [pX + 15, sY, pZ + 25];
+    let pX = spawnX, pZ = spawnZ;
+    player.pos = [pX, terrainH(pX, pZ, 6) + 1.6, pZ];
+    player.vel = [0, 0, 0];
+    let bX = boatSpawnX, bZ = boatSpawnZ;
+    let sY = seaMap(bX, bZ, 4, simTime);
+    boat.pos = [bX, sY, bZ];
     boat.vel = [0, 0, 0];
-    boat.yaw = 1.5;
+    boat.yaw = 0.0;
+    cam.yaw = 0.0;
+    player.state = 'walk';
+    if ($('btn-toggle-boat')) $('btn-toggle-boat').textContent = '🚤 Drive Boat (E)';
 };
 
 // 1. Master Scale-Invariant Pratyaksh-II (PRK-4)
@@ -702,58 +727,60 @@ function loop(now){
 
   // Interaction Toggle
   if (ePressed) {
-      if (player.state === 'walk' && pDist < 8.0 && !hasDetonated) { player.state = 'boat'; } 
-      else if (player.state === 'boat') {
-          player.state = 'walk';
-          let eject = [Math.sin(boat.yaw + Math.PI/2)*3.5, 2, Math.cos(boat.yaw + Math.PI/2)*3.5];
-          player.pos[0] = boat.pos[0] + eject[0];
-          player.pos[1] = Math.max(boat.pos[1] + eject[1], terrainH(player.pos[0], player.pos[2], 7)+2);
-          player.pos[2] = boat.pos[2] + eject[2];
-          player.vel = [0, 6, 0];
-      }
+      window.toggleBoatState();
       ePressed = false;
   }
   let ax = $('action');
-  if (player.state === 'walk' && pDist < 8.0 && !hasDetonated) { ax.style.display = 'block'; ax.textContent = 'Press E to Drive Boat'; }
-  else if (player.state === 'boat') { ax.style.display = 'block'; ax.textContent = 'Press E to Exit Boat'; }
-  else { ax.style.display = 'none'; }
+  if (player.state === 'walk' && pDist < 12.0 && !hasDetonated) { 
+      ax.style.display = 'block'; 
+      ax.textContent = 'Press E or Click Button to Drive Boat'; 
+  } else if (player.state === 'boat') { 
+      ax.style.display = 'block'; 
+      ax.textContent = 'Press E to Exit Boat · WASD to Drive'; 
+  } else { 
+      ax.style.display = 'none'; 
+  }
 
 
   // ==============================================================
   // 1) PLAYER PHYSICS (Unified Solver)
   // ==============================================================
-  let accX = 0, accZ = 0;
-  let pAcc = keys.ShiftLeft ? 40 : 16; 
-  if (!player.onGround) pAcc *= 0.1;
+  if (player.state === 'boat') {
+      player.pos = [boat.pos[0], boat.pos[1] + 1.2, boat.pos[2]];
+      player.vel = [boat.vel[0], boat.vel[1], boat.vel[2]];
+      player.onGround = true;
+  } else {
+      let accX = 0, accZ = 0;
+      let pAcc = (keys.ShiftLeft || keys.ShiftRight) ? 40 : 16; 
+      if (!player.onGround) pAcc *= 0.1;
 
-  if (player.state === 'walk') {
       let fHor = [Math.sin(cam.yaw), 0, -Math.cos(cam.yaw)];
-      if(keys.KeyW) { accX += fHor[0]*pAcc; accZ += fHor[2]*pAcc; }
-      if(keys.KeyS) { accX -= fHor[0]*pAcc; accZ -= fHor[2]*pAcc; }
-      if(keys.KeyD) { accX += cr[0]*pAcc;   accZ += cr[2]*pAcc; }
-      if(keys.KeyA) { accX -= cr[0]*pAcc;   accZ -= cr[2]*pAcc; }
-  }
+      if(keys.KeyW || keys.ArrowUp) { accX += fHor[0]*pAcc; accZ += fHor[2]*pAcc; }
+      if(keys.KeyS || keys.ArrowDown) { accX -= fHor[0]*pAcc; accZ -= fHor[2]*pAcc; }
+      if(keys.KeyD || keys.ArrowRight) { accX += cr[0]*pAcc;   accZ += cr[2]*pAcc; }
+      if(keys.KeyA || keys.ArrowLeft) { accX -= cr[0]*pAcc;   accZ -= cr[2]*pAcc; }
 
-  const player_ode = (state) => {
-      let vx = state[3], vy = state[4], vz = state[5];
-      let friction = player.onGround ? 8.0 : 1.0; 
-      let gravity = -25.0;
-      return [vx, vy, vz, accX - friction * vx, gravity, accZ - friction * vz];
-  };
+      const player_ode = (state) => {
+          let vx = state[3], vy = state[4], vz = state[5];
+          let friction = player.onGround ? 8.0 : 1.0; 
+          let gravity = -25.0;
+          return [vx, vy, vz, accX - friction * vx, gravity, accZ - friction * vz];
+      };
 
-  let p_state = [player.pos[0], player.pos[1], player.pos[2], player.vel[0], player.vel[1], player.vel[2]];
-  let new_p = solve_step(p_state, dt, player_ode);
-  
-  if (!isNaN(new_p[0]) && isFinite(new_p[0])) {
-      player.pos = [new_p[0], new_p[1], new_p[2]];
-      player.vel = [new_p[3], new_p[4], new_p[5]];
+      let p_state = [player.pos[0], player.pos[1], player.pos[2], player.vel[0], player.vel[1], player.vel[2]];
+      let new_p = solve_step(p_state, dt, player_ode);
+      
+      if (!isNaN(new_p[0]) && isFinite(new_p[0])) {
+          player.pos = [new_p[0], new_p[1], new_p[2]];
+          player.vel = [new_p[3], new_p[4], new_p[5]];
+      }
+      
+      let floorH = Math.max(terrainH(player.pos[0], player.pos[2], 7), seaMap(player.pos[0], player.pos[2], 4, simTime)-1.2);
+      if (player.pos[1] <= floorH + 0.1) {
+          player.pos[1] = floorH + 0.1; player.vel[1] = 0; player.onGround = true;
+          if (keys.Space) player.vel[1] = 8.5; // Jump
+      } else { player.onGround = false; }
   }
-  
-  let floorH = Math.max(terrainH(player.pos[0], player.pos[2], 7), seaMap(player.pos[0], player.pos[2], 4, simTime)-1.2);
-  if (player.pos[1] <= floorH + 0.1) {
-      player.pos[1] = floorH + 0.1; player.vel[1] = 0; player.onGround = true;
-      if (keys.Space && player.state === 'walk') player.vel[1] = 8.5; // Jump
-  } else { player.onGround = false; }
 
 
   // ==============================================================
@@ -761,8 +788,16 @@ function loop(now){
   // ==============================================================
   let bThrust = 0;
   if (player.state === 'boat' && !hasDetonated) {
-      if(keys.KeyW) bThrust = 32; if(keys.KeyS) bThrust = -14;
-      if(keys.KeyA) boat.yaw += 1.8 * dt; if(keys.KeyD) boat.yaw -= 1.8 * dt;
+      if(keys.KeyW || keys.ArrowUp) bThrust = 55;
+      if(keys.KeyS || keys.ArrowDown) bThrust = -25;
+      if(keys.KeyA || keys.ArrowLeft) {
+          boat.yaw += 2.2 * dt;
+          cam.yaw += 2.2 * dt;
+      }
+      if(keys.KeyD || keys.ArrowRight) {
+          boat.yaw -= 2.2 * dt;
+          cam.yaw -= 2.2 * dt;
+      }
   }
   let bf = [Math.sin(boat.yaw), 0, Math.cos(boat.yaw)];
   let thrust_x = bf[0] * bThrust;
@@ -774,28 +809,26 @@ function loop(now){
       let vx = state[3], vy = state[4], vz = state[5];
 
       let waterH = seaMap(px, pz, 4, simTime);
+      let landH = terrainH(px, pz, 6);
+      let surfaceH = Math.max(waterH, landH);
       if (shockWavePulse > 0.001) {
-          waterH += Math.sin(simTime * 9.0) * shockWavePulse * 1.6;
+          surfaceH += Math.sin(simTime * 9.0) * shockWavePulse * 1.6;
       }
       
-      let depth = waterH - py; // > 0 indicates hull submergence
+      let depth = surfaceH - py;
       let spdXZ = Math.hypot(vx, vz);
 
       let ax = 0, ay = -9.81, az = 0;
 
       if (depth > 0) {
-          // Stiff hydrodynamic buoyancy spring
           let fBuoy = waveStiffness * depth;
-          // Stiff nonlinear hydrodynamic slamming damping
-          let fDamp = (9.0 + 3.0 * Math.abs(vy)) * vy;
+          let fDamp = (8.0 + 2.5 * Math.abs(vy)) * vy;
           ay = -9.81 + fBuoy - fDamp;
 
-          // Water drag
-          let dragXZ = 2.4 + 0.4 * spdXZ;
+          let dragXZ = 1.8 + 0.3 * spdXZ;
           ax = thrust_x - dragXZ * vx;
           az = thrust_z - dragXZ * vz;
       } else {
-          // In Flight
           ay = -16.0 - 0.05 * vy;
           ax = thrust_x * 0.2 - 0.08 * vx;
           az = thrust_z * 0.2 - 0.08 * vz;
@@ -819,7 +852,7 @@ function loop(now){
       if (bExploded) {
           hasDetonated = true;
           $('alarm-banner').style.display = 'block';
-          $('alarm-banner').innerHTML = `🚨 <b>${currentSolver.toUpperCase()} DETONATED INTO ${isNaN(new_b[1]) ? 'NaN' : 'INFINITY'}!</b><br>Extreme wave stiffness (${waveStiffness}) shattered explicit CFL limit! Switch to PRK-4 or click Reboot!`;
+          $('alarm-banner').innerHTML = `🚨 <b>${currentSolver.toUpperCase()} DETONATED INTO ${isNaN(new_b[1]) ? 'NaN' : 'INFINITY'}!</b><br>Extreme wave stiffness (${waveStiffness}) shattered explicit CFL limit! Switch to PRK-4 or click Reset!`;
           boat.pos[1] = 9999.0;
           boat.vel = [NaN, NaN, NaN];
           if (player.state === 'boat') { player.state = 'walk'; player.vel = [0, 0, 0]; }
@@ -852,7 +885,7 @@ function loop(now){
   // 3) CAMERA POSITIONING & AUDIO
   // ==============================================================
   if (player.state === 'walk') cam.pos = [player.pos[0], player.pos[1] + 1.6, player.pos[2]];
-  else cam.pos = [boat.pos[0] - fW[0]*1.8 + uW[0]*1.2, boat.pos[1] - fW[1]*1.8 + uW[1]*1.2, boat.pos[2] - fW[2]*1.8 + uW[2]*1.2];
+  else cam.pos = [boat.pos[0] - fW[0]*4.5 + uW[0]*2.2, boat.pos[1] - fW[1]*4.5 + uW[1]*2.2, boat.pos[2] - fW[2]*4.5 + uW[2]*2.2];
 
   if (actx) {
       let spd = player.state==='walk' ? Math.hypot(player.vel[0], player.vel[2]) : Math.hypot(boat.vel[0], boat.vel[2]);
