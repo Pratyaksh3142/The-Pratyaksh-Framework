@@ -1,0 +1,930 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Maayaa Engine v2.0: PRK-4 vs Classical RK4 Open World Showdown</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+  html,body{margin:0;height:100%;overflow:hidden;background:#000;font-family:Inter,Segoe UI,Arial,sans-serif}
+  canvas{display:block;width:100vw;height:100vh;cursor:crosshair}
+  #hud{position:fixed;left:14px;top:12px;color:#fff;font-size:12px;line-height:1.55;text-shadow:0 1px 3px #000;pointer-events:none;opacity:.9}
+  #hud b{font-size:15px;letter-spacing:.5px;color:#00ff88;}
+  #panel{position:fixed;right:12px;top:12px;width:250px;background:rgba(10,14,20,.55);backdrop-filter:blur(10px);
+    border:1px solid rgba(255,255,255,.12);border-radius:10px;padding:12px 14px;color:#dde;font-size:12px}
+  #panel h3{margin:0 0 8px;font-size:13px;font-weight:600;color:#fff}
+  .row{display:flex;align-items:center;justify-content:space-between;margin:6px 0}
+  .row input[type=range]{width:130px}
+  .row span{width:34px;text-align:right;color:#9ab}
+  #toggle{position:fixed;right:12px;bottom:12px;background:rgba(0,0,0,.5);color:#fff;border:1px solid #fff3;border-radius:6px;padding:6px 10px;cursor:pointer;font-size:12px}
+  #err{position:fixed;inset:0;display:none;color:#f88;background:#100;padding:30px;white-space:pre-wrap;font-family:monospace;font-size:12px;overflow:auto}
+  #hint{position:fixed;left:50%;bottom:30px;transform:translateX(-50%);color:#fff;font-size:13px;background:rgba(0,0,0,.45);padding:8px 16px;border-radius:20px;pointer-events:none;transition:opacity 1s}
+  #xhair { position:fixed; left:50%; top:50%; transform:translate(-50%,-50%); color:#fff; font-size:24px; opacity:0.6; pointer-events:none; }
+  #action { position:fixed; left:50%; bottom:100px; transform:translateX(-50%); font-size:20px; font-weight:bold; letter-spacing:1px; text-shadow:0 2px 5px #000; color:#00ff88; display:none; pointer-events:none; }
+
+  .solver-btn { padding: 5px 10px; border-radius: 6px; border: 1px solid #444; background: #111; color: #aaa; cursor: pointer; font-size: 11px; font-weight: 600; margin-right: 4px; }
+  .solver-btn.active-prk { background: rgba(46,204,113,0.25); border-color: #2ecc71; color: #2ecc71; }
+  .solver-btn.active-rk4 { background: rgba(231,76,60,0.25); border-color: #e74c3c; color: #e74c3c; }
+  .solver-btn.active-euler { background: rgba(52,152,219,0.25); border-color: #3498db; color: #3498db; }
+  .shock-btn { background: linear-gradient(135deg, rgba(231,76,60,0.3), rgba(192,57,43,0.5)); border: 1px solid #e74c3c; color: #ff7675; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-weight: bold; font-size: 11px; margin-top: 8px; width: 100%; }
+  .shock-btn:hover { box-shadow: 0 0 15px rgba(231,76,60,0.5); }
+  #alarm-banner { position: fixed; top: 110px; left: 50%; transform: translateX(-50%); background: rgba(231,76,60,0.9); color: #fff; padding: 10px 24px; border-radius: 8px; font-weight: bold; font-size: 15px; letter-spacing: 1px; z-index: 999; display: none; box-shadow: 0 0 30px #e74c3c; animation: pulse-alarm 0.8s infinite alternate; }
+  @keyframes pulse-alarm { from { opacity: 0.8; transform: translateX(-50%) scale(0.98); } to { opacity: 1; transform: translateX(-50%) scale(1.02); } }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="xhair">+</div>
+<div id="action">Press E to Drive Boat</div>
+<div id="alarm-banner">🚨 CLASSICAL RK4 DETONATED INTO NaN! Boat launched into space. Switch to PRK-4 or click Reboot!</div>
+<div id="hud"><b>MAAYAA ENGINE v2.0 : OPEN WORLD SHOWDOWN</b><br><span id="stats"></span><br><span id="solver-badge" style="color:#2ecc71; font-weight:bold;">Active Solver: PRATYAKSH-II (PRK-4 Scale-Invariant)</span><br><span id="telemetry-row" style="font-size:11px; color:#9ab;">Guardrail D: 0.000000 | 16.6ms Frame Budget</span></div>
+<div id="panel">
+  <h3 style="color:#2ecc71;">Physics Integrator</h3>
+  <div style="margin-bottom:8px;">
+    <button id="btn-prk4" class="solver-btn active-prk" onclick="setSolver('prk4')">PRK-4 (Ours)</button>
+    <button id="btn-rk4" class="solver-btn" onclick="setSolver('rk4')">Classical RK4</button>
+    <button id="btn-euler" class="solver-btn" onclick="setSolver('euler')">Euler/Verlet</button>
+  </div>
+  <div class="row">Wave Stiffness <input id="stiff" type="range" min="50" max="350" step="10" value="140"><span id="stiffV">140</span></div>
+  <button class="shock-btn" onclick="triggerWaveShock()">💥 Trigger 10G Rogue Wave Shock</button>
+  <button class="solver-btn" style="margin-top:6px; width:100%;" onclick="rebootPhysics()">↺ Reboot Boat & Player</button>
+  <h3 style="margin-top:12px">Environment</h3>
+  <div class="row">Time of day <input id="time" type="range" min="5.6" max="22.0" step="0.01" value="17.25"><span id="timeV"></span></div>
+  <div class="row">Animate sun <input id="anim" type="checkbox"></div>
+  <div class="row">Cloud cover <input id="cloud" type="range" min="0" max="1" step="0.01" value="0.5"><span id="cloudV"></span></div>
+  <div class="row">Wave height <input id="wave" type="range" min="0.1" max="3" step="0.01" value="1.0"><span id="waveV"></span></div>
+  <div class="row">Haze <input id="fog" type="range" min="0" max="4" step="0.01" value="1.0"><span id="fogV"></span></div>
+  <h3 style="margin-top:12px">Camera / Post</h3>
+  <div class="row">Exposure <input id="exp" type="range" min="0.2" max="3" step="0.01" value="1.0"><span id="expV"></span></div>
+  <div class="row">Bloom <input id="bloom" type="range" min="0" max="0.2" step="0.005" value="0.05"><span id="bloomV"></span></div>
+  <div class="row">FOV <input id="fov" type="range" min="30" max="100" step="1" value="70"><span id="fovV"></span></div>
+  <div class="row">Resolution <input id="res" type="range" min="0.3" max="1" step="0.05" value="0.65"><span id="resV"></span></div>
+</div>
+<button id="toggle">Hide UI (H)</button>
+<div id="hint">Click to start Engine · WASD move · Shift sprint · Space jump · E enter/exit boat</div>
+<pre id="err"></pre>
+
+<script>
+"use strict";
+// =====================================================================
+//  SHADERS
+// =====================================================================
+const VS = `#version 300 es
+out vec2 vUv;
+void main(){ vec2 p=vec2((gl_VertexID<<1)&2, gl_VertexID&2); vUv=p; gl_Position=vec4(p*2.-1.,0.,1.); }`;
+
+const COMMON = `#version 300 es
+precision highp float; precision highp int;
+in vec2 vUv;
+const float PI=3.14159265359;
+float hash(ivec2 q){
+  uvec2 u=uvec2(q); uint h=(u.x*1597334677u)^(u.y*3812015801u); h=(h^(h>>16u))*2246822519u; h^=h>>13u; return float(h)*(1.0/4294967295.0);
+}
+float hash3(vec3 p){
+  uvec3 q=uvec3(ivec3(p)); uint h=(q.x*1597334677u)^(q.y*3812015801u)^(q.z*2798796415u);
+  h=(h^(h>>16u))*2246822519u; h^=h>>13u; return float(h)*(1.0/4294967295.0);
+}
+vec3 noised(vec2 x){
+  vec2 i=floor(x), f=x-i; vec2 u=f*f*f*(f*(f*6.-15.)+10.); vec2 du=30.*f*f*(f*(f-2.)+1.); ivec2 ii=ivec2(i);
+  float a=hash(ii), b=hash(ii+ivec2(1,0)), c=hash(ii+ivec2(0,1)), d=hash(ii+ivec2(1,1));
+  float k1=b-a, k2=c-a, k4=a-b-c+d; return vec3(a+k1*u.x+k2*u.y+k4*u.x*u.y, du*vec2(k1+k4*u.y, k2+k4*u.x));
+}
+vec2 rot(vec2 p){ return vec2(0.8*p.x+0.6*p.y, -0.6*p.x+0.8*p.y); }
+float fbm2(vec2 p,int oct){
+  float a=0., b=0.5; for(int i=0;i<8;i++){ if(i>=oct) break; a+=b*noised(p).x; b*=0.5; p=rot(p)*2.03; } return a;
+}
+const float Re=6360e3, Ra=6420e3, Hr=7994., Hm=1200.;
+const vec3 betaR=vec3(5.8e-6,13.5e-6,33.1e-6); const vec3 betaM=vec3(21e-6);
+float sphereExit(vec3 ro, vec3 rd, float R){
+  float b=dot(ro,rd), c=dot(ro,ro)-R*R; float d=b*b-c; return -b+sqrt(max(d,0.));
+}
+bool hitsEarth(vec3 p, vec3 d){ float b=dot(p,d), c=dot(p,p)-Re*Re; return b<0. && b*b-c>0.; }
+vec3 sunTransmittance(vec3 L){
+  vec3 ro=vec3(0.,Re+10.,0.); float tl=sphereExit(ro,L,Ra); float ds=tl/12.; float oR=0.,oM=0.;
+  for(int j=0;j<12;j++){ vec3 q=ro+L*(ds*(float(j)+.5)); float h=length(q)-Re; oR+=exp(-h/Hr)*ds; oM+=exp(-h/Hm)*ds; }
+  return exp(-(betaR*oR+betaM*1.1*oM))*smoothstep(-0.03,0.02,L.y);
+}
+`;
+
+const LUT_FS = COMMON + `
+uniform vec3 uSunDir; out vec4 outColor;
+vec3 atmosphere(vec3 rd, vec3 L){
+  vec3 ro=vec3(0.,Re+10.,0.); float tmax=sphereExit(ro,rd,Ra); const int N=24; float ds=tmax/float(N);
+  float mu=dot(rd,L), g=0.76;
+  float pR=3./(16.*PI)*(1.+mu*mu), pM=3./(8.*PI)*((1.-g*g)*(1.+mu*mu))/((2.+g*g)*pow(1.+g*g-2.*g*mu,1.5));
+  float oR=0.,oM=0.; vec3 sR=vec3(0),sM=vec3(0);
+  for(int i=0;i<N;i++){
+    vec3 p=ro+rd*(ds*(float(i)+.5)); float h=length(p)-Re;
+    float hr=exp(-h/Hr)*ds, hm=exp(-h/Hm)*ds; oR+=hr; oM+=hm;
+    if(hitsEarth(p,L)) continue;
+    float tl=sphereExit(p,L,Ra), dl=tl/8.; float lR=0.,lM=0.;
+    for(int j=0;j<8;j++){ vec3 q=p+L*(dl*(float(j)+.5)); float hh=length(q)-Re; lR+=exp(-hh/Hr)*dl; lM+=exp(-hh/Hm)*dl; }
+    vec3 att=exp(-(betaR*(oR+lR)+betaM*1.1*(oM+lM)));
+    sR+=att*hr; sM+=att*hm;
+  }
+  return 20.*(sR*betaR*pR + sM*betaM*pM);
+}
+void main(){
+  float phi=(vUv.x-0.5)*2.*PI; float e=vUv.y*2.-1.; float lat=sign(e)*e*e*PI*0.5;
+  vec3 d=vec3(cos(lat)*sin(phi), sin(lat), cos(lat)*cos(phi));
+  vec3 dd=normalize(vec3(d.x,max(d.y,0.0),d.z)); vec3 c=atmosphere(dd,uSunDir);
+  if(d.y<0.) c*=mix(1.,0.5,clamp(-d.y*4.,0.,1.));
+  outColor=vec4(c+vec3(0.0008,0.001,0.002),1.);
+}`;
+
+const SCENE_FS = COMMON + `
+uniform vec2 uRes; uniform float uTime; uniform vec3 uCamPos; uniform mat3 uCamMat;
+uniform vec3 uSunDir; uniform sampler2D uSky;
+uniform float uWaveH, uCloud, uFog, uFocal, uSunI; uniform vec2 uWind; uniform int uFrame;
+// Boat Uniforms
+uniform vec3 uBoatPos; uniform mat3 uBoatMat; uniform mat3 uBoatInvMat; uniform vec2 uBoatVel;
+out vec4 outColor;
+#define FAR 9000.
+
+vec3 skyL(vec3 d){
+  float lat=asin(clamp(d.y,-1.,1.)); float v=0.5+0.5*sign(lat)*sqrt(abs(lat)/(PI*0.5));
+  float u=atan(d.x,d.z)/(2.*PI)+0.5; return texture(uSky,vec2(u,v)).rgb;
+}
+
+// ---------------- BOAT SDF ----------------
+float sdBox(vec3 p, vec3 b){ vec3 q=abs(p)-b; return length(max(q,0.)) + min(max(q.x,max(q.y,q.z)),0.); }
+float sdBoat(vec3 p){
+  vec3 q=p; q.x*=1.-0.13*q.z; q.x*=1.+0.06*clamp(-q.z,0.,10.); 
+  float base=sdBox(q, vec3(1.1,0.6,3.1));
+  float inside=sdBox(q-vec3(0.,0.35,0.), vec3(0.9,0.7,2.9));
+  float boat=max(base,-inside);
+  float s1=sdBox(q-vec3(0.,0.1,1.5), vec3(0.8,0.05,0.4));
+  float s2=sdBox(q-vec3(0.,0.1,-1.5), vec3(0.9,0.05,0.4));
+  float s3=sdBox(q-vec3(0.,0.1,0.), vec3(1.0,0.05,0.4));
+  return min(boat, min(s1,min(s2,s3)));
+}
+float traceBoat(vec3 ro, vec3 rd, float tmax){
+  float t=0.;
+  for(int i=0;i<60;i++){
+    vec3 p=ro+rd*t; vec3 bp=uBoatInvMat*(p-uBoatPos);
+    if(length(p-uBoatPos)>6. && length(bp)>5.) { t+=length(p-uBoatPos)-4.5; continue; }
+    float d=sdBoat(bp); if(d<0.002*t) return t;
+    t+=d*0.8; if(t>tmax) return 1e9;
+  } return 1e9;
+}
+vec3 boatNormal(vec3 p){
+  vec2 e=vec2(0.01,0); vec3 bp=uBoatInvMat*(p-uBoatPos); float d=sdBoat(bp);
+  vec3 n=vec3(sdBoat(bp+e.xyy)-d, sdBoat(bp+e.yxy)-d, sdBoat(bp+e.yyx)-d);
+  return normalize(uBoatMat*n);
+}
+float sphShadow(vec3 ro, vec3 L, vec3 sph, float r){
+  vec3 oc=ro-sph; float b=dot(oc,L), c=dot(oc,oc)-r*r, d=b*b-c;
+  if(d>0. && b<0.) return smoothstep(0.,1.,d*d*0.01); return 1.;
+}
+
+// ---------------- TERRAIN (OPTIMIZED) ----------------
+float islandMask(vec2 x){
+  float w=(noised(x*0.0021).x-0.5)*0.45+(noised(x*0.006).x-0.5)*0.15;
+  float r1=length((x-vec2(0.,-1100.))*vec2(1.,1.35))/1000.+w, r2=length((x-vec2(-2000.,-3400.))*vec2(0.8,1.))/1500.+w, r3=length(x-vec2(2600.,-2600.))/700.+w;
+  return max(max(1.-smoothstep(0.25,1.05,r1), 1.3*(1.-smoothstep(0.2,1.,r2))), 0.8*(1.-smoothstep(0.2,1.,r3)));
+}
+float terrainH(vec2 x, int oct){
+  float m=islandMask(x); if(m<0.001) return -30.0;
+  vec2 p=x*0.0012; float a=0.,b=1.; vec2 d=vec2(0);
+  for(int i=0;i<12;i++){
+    if(i>=oct) break; vec3 n=noised(p); d+=n.yz*2.; float v=1.-abs(n.x*2.-1.); a+=b*(v*v)/(1.+dot(d,d)*0.2); b*=0.45; p=mat2(0.8,-0.6,0.6,0.8)*p*2.1;
+  } return -30.+m*(a*350.);
+}
+vec3 terrainNormal(vec2 p, float t){
+  float e=max(0.02, 0.001*t); int oct=t<500.?11:(t<1500.?9:7);
+  return normalize(vec3(terrainH(p-vec2(e,0),oct)-terrainH(p+vec2(e,0),oct), 2.*e, terrainH(p-vec2(0,e),oct)-terrainH(p+vec2(0,e),oct)));
+}
+
+float traceTerrain(vec3 ro, vec3 rd, float tmax){
+  float t=0.5;
+  for(int i=0;i<350;i++){ 
+    vec3 p=ro+rd*t; if(p.y>1200. && rd.y>0.) return 1e9; float h=p.y-terrainH(p.xz, 5); 
+    if(abs(h)<0.002*t) return t; t+=0.45*h+t*0.001; if(t>tmax) return 1e9;
+  } return t<tmax?t:1e9;
+}
+
+float softShadow(vec3 ro, vec3 L){
+  if(L.y<=0.) return 0.; float res=1., t=1.;
+  for(int i=0;i<40;i++){ 
+    vec3 p=ro+L*t; if(p.y>1000.) break;
+    float h=p.y-terrainH(p.xz, 3); res=min(res,8.*h/t); if(res<0.001) break; t+=clamp(h*0.7,0.5,50.);
+  } return smoothstep(0.,1.,clamp(res,0.,1.));
+}
+float triFbm(vec3 p, vec3 m, int oct) { return fbm2(p.yz,oct)*m.x + fbm2(p.zx,oct)*m.y + fbm2(p.xy,oct)*m.z; }
+vec3 triBump(vec3 p, int oct) { return vec3(fbm2(p.yz,oct),fbm2(p.zx,oct),fbm2(p.xy,oct))*2.-1.; }
+
+// ---------------- OCEAN ----------------
+float seaOct(vec2 uv,float choppy){
+  uv+=noised(uv).x*2.-1.; vec2 wv=1.-abs(sin(uv)), swv=abs(cos(uv)); wv=mix(wv,swv,wv); return pow(1.-pow(wv.x*wv.y,0.65),choppy);
+}
+float seaMap(vec3 p,int it){
+  float freq=0.16, amp=0.6*uWaveH, choppy=4.; float T=1.+uTime*0.8; vec2 uv=p.xz; uv.x*=0.75; float h=0.;
+  for(int i=0;i<7;i++){ if(i>=it) break;
+    float d=seaOct((uv+T)*freq,choppy)+seaOct((uv-T)*freq,choppy);
+    h+=d*amp; uv=mat2(1.6,1.2,-1.2,1.6)*uv; freq*=1.9; amp*=0.22; choppy=mix(choppy,1.,0.2);
+  } return p.y-(h-0.5*uWaveH);
+}
+float traceSea(vec3 ro, vec3 rd){
+  float top=uWaveH+0.1, bot=-0.5*uWaveH-0.1; if(rd.y>=-1e-4) return 1e9;
+  float t0=max(0.,(ro.y-top)/-rd.y), t1=(ro.y-bot)/-rd.y; if(t0>FAR) return 1e9;
+  t1=min(t1,FAR); float hm=seaMap(ro+rd*t0,4), hx=seaMap(ro+rd*t1,4);
+  if(hx>0.) return t1; if(hm<0.) return t0; float tm=t0;
+  for(int i=0;i<10;i++){ tm=mix(t0,t1,hm/(hm-hx)); float h=seaMap(ro+rd*tm,4); if(h<0.){t1=tm;hx=h;} else {t0=tm;hm=h;} }
+  return tm;
+}
+vec3 seaNormal(vec3 p,float eps,int it){
+  float h=seaMap(p,it); return normalize(vec3(seaMap(p+vec3(eps,0,0),it)-h, eps, seaMap(p+vec3(0,0,eps),it)-h));
+}
+
+// ---------------- CLOUDS ----------------
+const float CB=1300., CT=2600.;
+float cloudThresh(){ return 0.66-uCloud*0.36; }
+float cloudDensity(vec3 p){
+  float h=(p.y-CB)/(CT-CB); if(h<0.||h>1.) return 0.;
+  vec2 q=p.xz*0.00028+uWind; float base=fbm2(q,4), prof=smoothstep(0.,0.18,h)*smoothstep(1.,0.4,h);
+  float d=(base-cloudThresh())*5.*prof - (1.-prof)*0.3; if(d<=0.) return 0.;
+  float det=fbm2(q*7.+vec2(p.y*0.0015),2); return clamp(d-det*0.45*(1.-d),0.,1.);
+}
+float hg(float mu,float g){ float g2=g*g; return (1.-g2)/(4.*PI*pow(1.+g2-2.*g*mu,1.5)); }
+vec4 clouds(vec3 ro, vec3 rd, vec3 L, vec3 sunCol, vec3 amb){
+  if(rd.y<0.01||uCloud<0.01) return vec4(0,0,0,1);
+  float t0=(CB-ro.y)/rd.y, t1=(CT-ro.y)/rd.y; if(t0>40000.) return vec4(0,0,0,1);
+  const int N=28; float dt=(t1-t0)/float(N); 
+  float jit=hash(ivec2(gl_FragCoord.xy)+ivec2(uFrame*37,uFrame*91)), mu=dot(rd,L), phase=mix(hg(mu,0.6),hg(mu,-0.2),0.3);
+  vec3 S=vec3(0); float T=1.;
+  for(int i=0;i<N;i++){
+    float t=t0+dt*(float(i)+jit); vec3 p=ro+rd*t; float d=cloudDensity(p);
+    if(d>0.001){
+      float dl=0.; for(int j=1;j<=2;j++) dl+=cloudDensity(p+L*(float(j)*200.));
+      float beer=exp(-dl*200.*0.018), powder=1.-exp(-d*2.), sig=d*0.03;
+      vec3 lum=sunCol*beer*phase*mix(1.,powder,0.6)*2.2 + amb*(0.6+0.4*(p.y-CB)/(CT-CB));
+      float a=1.-exp(-sig*dt*exp(-t*0.000035)); S+=T*a*lum; T*=1.-a; if(T<0.01) break;
+    }
+  } return vec4(S,T);
+}
+float cloudShadow(vec3 p, vec3 L){
+  if(uCloud<0.01) return 1.; vec3 q=p+L*((1800.-p.y)/max(L.y,0.08));
+  return 1.-0.8*smoothstep(cloudThresh(),cloudThresh()+0.12,fbm2(q.xz*0.00028+uWind,3));
+}
+vec3 applyFog(vec3 col, vec3 ro, vec3 rd, float t, vec3 L, vec3 sunCol){
+  float b=0.0011, a=uFog*0.00006, fog=abs(rd.y)>1e-4 ? a*exp(-ro.y*b)*(1.-exp(-t*rd.y*b))/(rd.y*b)*b : a*exp(-ro.y*b)*t;
+  vec3 fc=skyL(normalize(vec3(rd.x,0.04,rd.z)))+sunCol*0.05*pow(max(dot(rd,L),0.),6.);
+  return mix(col,fc,clamp(1.-exp(-fog*1.0),0.,1.));
+}
+
+// ---------------- MAIN ----------------
+void main(){
+  vec2 uv=(gl_FragCoord.xy*2.-uRes)/uRes.y;
+  vec3 ro=uCamPos, rd=normalize(uCamMat*normalize(vec3(uv,-uFocal))), L=uSunDir;
+  vec3 sunCol=sunTransmittance(L)*uSunI, skyUp=skyL(vec3(0,1,0)), skyHz=skyL(normalize(vec3(L.x,0.1,L.z)));
+
+  float tS=traceSea(ro,rd);
+  float tT=traceTerrain(ro,rd,min(tS,FAR));
+  float tB=traceBoat(ro,rd,min(tT,min(tS,FAR)));
+  float tMin=min(tB,min(tS,tT));
+  vec3 col; float t=-1.;
+
+  if(tMin==tB && tB<1e8){
+    // ===== BOAT =====
+    t=tB; vec3 p=ro+rd*t; vec3 n=boatNormal(p); vec3 bp=uBoatInvMat*(p-uBoatPos);
+    vec3 alb=vec3(0.5, 0.18, 0.08); // Wood hull
+    if(abs(bp.y-0.1)<0.05) alb=vec3(0.85); // White stripe
+    if(bp.y>0.45) alb=vec3(0.3, 0.12, 0.05); // Wood rim
+    if(sdBox(bp-vec3(0,0.1,0), vec3(0.8,0.5,2.6))<0.0) alb=vec3(0.4, 0.3, 0.2); // Floor / seats
+
+    float sh=softShadow(p+n*0.2,L)*cloudShadow(p,L); float dif=max(dot(n,L),0.);
+    float ao=1.0; if(bp.y<0.4 && abs(bp.x)<0.9 && abs(bp.z)<2.4) ao=clamp(0.2+0.8*((bp.y+0.3)*1.5),0.,1.);
+    vec3 bounceDir=normalize(vec3(-L.x,0.,-L.z));
+    vec3 lin=sunCol*dif*sh + skyUp*(0.3+0.7*n.y)*ao + skyHz*0.25*clamp(dot(n,normalize(vec3(L.x,0.,L.z))),0.,1.)*ao + sunCol*alb*0.15*clamp(dot(n,bounceDir)*0.5+0.5,0.,1.)*ao;
+    col=alb*lin + sunCol*pow(max(dot(n,normalize(L-rd)),0.),30.)*0.1*sh;
+
+  } else if(tMin==tT && tT<1e8){
+    // ===== TERRAIN =====
+    t=tT; vec3 p=ro+rd*t; vec3 origN=terrainNormal(p.xz,t); vec3 n=origN;
+    float slope=clamp(1.-n.y,0.,1.);
+    vec3 p3=p*0.03, m=abs(n); m/=dot(m,vec3(1.));
+    float nzT=triFbm(p3,m,4), nzF=triFbm(p*0.3,m,4);
+    
+    float grassCoverage=smoothstep(0.7,0.95,n.y)*(1.-smoothstep(100.,400.,p.y+nzT*100.))*smoothstep(0.2,0.6,nzT+0.2); 
+    float sandMask=(1.-smoothstep(1.5,6.,p.y+nzF*4.))*smoothstep(0.5,0.9,n.y);
+    float rockMask=clamp(1.-grassCoverage-sandMask,0.,1.);
+    
+    if(t<1000. && rockMask>0.01) n=normalize(n+(triBump(p*1.5,3)+triBump(p*6.,2)*0.4)*0.4*rockMask*(1.-smoothstep(200.,1000.,t)));
+    
+    vec3 rock=mix(mix(vec3(0.12,0.11,0.10), vec3(0.35,0.32,0.28), nzT), vec3(0.20,0.15,0.12), smoothstep(0.4,0.6,nzF));
+    rock=mix(rock, vec3(0.12,0.11,0.10)*0.5, pow(sin(p.y*0.2+nzT*3.)*0.5+0.5, 4.)*smoothstep(0.5,0.9,slope));
+    vec3 grass=mix(mix(vec3(0.06,0.09,0.02), vec3(0.14,0.17,0.05), nzT), vec3(0.22,0.16,0.11), nzF*0.6);
+    
+    vec3 alb=mix(rock,grass,grassCoverage); alb=mix(alb,vec3(0.70,0.62,0.46)*mix(0.8,1.1,nzF),sandMask);
+    float wet=1.-smoothstep(0.,1.5,p.y-uWaveH*0.5); alb=mix(alb,alb*0.45,wet*sandMask);
+    
+    float bs=sphShadow(p,L,uBoatPos,2.5); 
+    float sh=softShadow(p+origN*0.2,L)*cloudShadow(p,L)*mix(0.3,1.0,bs);
+    float ao=clamp(0.5+0.5*origN.y,0.,1.) * (1.-clamp((terrainH(p.xz+origN.xz*12.,5)-p.y)*0.03,0.,1.)*0.6) * mix(1.,0.6,rockMask*(1.-nzF));
+    
+    vec3 bounceDir=normalize(vec3(-L.x,0.,-L.z));
+    col=alb*(sunCol*max(dot(n,L),0.)*sh + skyUp*(0.4+0.6*origN.y)*ao*1.2 + skyHz*0.25*clamp(dot(origN,normalize(vec3(L.x,0.,L.z))),0.,1.)*ao + sunCol*alb*0.15*clamp(dot(origN,bounceDir)*0.5+0.5,0.,1.)*ao);
+    float ndh=max(dot(n,normalize(L-rd)),0.);
+    col+=sunCol*sh*(pow(ndh,150.)*0.5*wet*sandMask + pow(ndh,15.)*0.06*rockMask + pow(1.-max(dot(n,-rd),0.),5.)*0.15*rockMask*max(dot(n,L),0.));
+
+  } else if(tMin==tS && tS<1e8){
+    // ===== OCEAN =====
+    t=tS; vec3 p=ro+rd*t; float eps=max(0.02,0.0015*t);
+    vec3 n=normalize(mix(seaNormal(p,eps,t<600.?6:4),vec3(0,1,0),smoothstep(0.,3000.,t)*0.6));
+    vec3 R=reflect(rd,n); R.y=abs(R.y); vec3 refl=skyL(R);
+    if(uCloud>0.01){
+      vec3 q=p+R*((1800.-p.y)/max(R.y,0.02)); float cd=smoothstep(cloudThresh(),cloudThresh()+0.15,fbm2(q.xz*0.00028+uWind,4))*exp(-length(q-p)*0.00003);
+      refl=mix(refl,sunCol*0.12*(0.5+0.5*max(dot(R,L),0.))+skyUp*0.9,cd*0.85);
+    }
+    float bs=sphShadow(p,vec3(L.x,max(L.y,0.0),L.z),uBoatPos,2.5);
+    float sh=softShadow(p+vec3(0,0.5,0),L)*cloudShadow(p,L)*mix(0.3,1.0,bs);
+    float rl=max(dot(R,L),0.), crest=max(p.y+0.5*uWaveH,0.)/max(uWaveH,0.01), depth=max(p.y-terrainH(p.xz,6),0.);
+    
+    vec2 cuv=p.xz*2.0+uTime; float c1=abs(sin(cuv.x+sin(cuv.y))), c2=abs(cos(cuv.y+cos(cuv.x)));
+    float caustics=pow(c1*c2, 1.5)*2.5 * max(L.y,0.0) * sh;
+
+    vec3 amb=skyUp*0.8+sunCol*0.04*max(L.y,0.);
+    vec3 water=mix(vec3(0.72,0.64,0.47)*(sunCol*max(L.y,0.)*sh*0.9*(1.+caustics)+skyUp)*exp(-vec3(0.45,0.10,0.07)*depth*2.), vec3(0.004,0.03,0.045)*amb*3., 1.-exp(-depth*0.3)) + sunCol*vec3(0.05,0.32,0.26)*0.018*crest*crest*pow(max(dot(rd,L)*0.5+0.5,0.),3.)*sh;
+    col=mix(water,refl,min(0.02+0.98*pow(1.-max(dot(n,-rd),0.),5.),0.9)) + sunCol*sh*(pow(rl,1800.)*120.+pow(rl,180.)*1.5+pow(rl,20.)*0.03);
+    
+    float fn=noised(p.xz*0.6+uTime*0.3).x*0.6+noised(p.xz*2.1-uTime*0.2).x*0.4;
+    float shoreF=smoothstep(2.2,0.,depth)*smoothstep(0.35,0.75,fn+0.25*sin(depth*3.-uTime*1.5));
+    float crestF=smoothstep(1.05,1.45,crest)*smoothstep(0.45,0.8,fn)*step(0.4,uWaveH);
+    
+    float bspd=length(uBoatVel); vec2 bdir=uBoatVel/(bspd+1e-4); vec2 toBoat=p.xz-uBoatPos.xz;
+    float wakeLine=max(dot(normalize(toBoat+1e-4),-bdir),0.0);
+    float wakeF=exp(-length(toBoat)*0.2) * pow(wakeLine, 4.0) * bspd * 0.15;
+    float splashF=exp(-length(toBoat - bdir*2.5)*1.2) * bspd * 0.3;
+
+    float foam=clamp(shoreF+crestF+wakeF+splashF, 0.,1.)*(1.-smoothstep(1500.,4000.,t));
+    col=mix(col, vec3(0.9)*(sunCol*max(dot(n,L),0.)*sh+skyUp*1.2), foam*0.9);
+  } else {
+    // ===== SKY =====
+    col=skyL(rd); float mu=dot(rd,L); col+=sunCol*60.*smoothstep(0.99990,0.99994,mu);
+    
+    float star=pow(hash3(rd*400.0), 120.0);
+    col+=vec3(star)*smoothstep(0.0, 0.2, -L.y)*3.0;
+
+    vec4 cl=clouds(ro,rd,L,sunCol,skyUp*1.1+vec3(0.002)); col=col*cl.a+cl.rgb;
+  }
+  if(t>0.) col=applyFog(col,ro,rd,t,L,sunCol);
+  outColor=vec4(clamp(col,0.,30000.),1.);
+}`;
+
+const DOWN_FS = `#version 300 es
+precision highp float; in vec2 vUv; uniform sampler2D uSrc; uniform vec2 uTexel; out vec4 o;
+void main(){
+  vec2 d=uTexel; vec3 c=texture(uSrc,vUv).rgb*4.;
+  c+=texture(uSrc,vUv+vec2(-d.x,-d.y)).rgb+texture(uSrc,vUv+vec2(d.x,-d.y)).rgb+texture(uSrc,vUv+vec2(-d.x,d.y)).rgb+texture(uSrc,vUv+vec2(d.x,d.y)).rgb;
+  o=vec4(min(c/8.,vec3(20000.)),1.);
+}`;
+const UP_FS = `#version 300 es
+precision highp float; in vec2 vUv; uniform sampler2D uSrc; uniform vec2 uTexel; out vec4 o;
+void main(){
+  vec2 d=uTexel; vec3 c=texture(uSrc,vUv).rgb*4.;
+  c+=(texture(uSrc,vUv+vec2(d.x,0)).rgb+texture(uSrc,vUv-vec2(d.x,0)).rgb+texture(uSrc,vUv+vec2(0,d.y)).rgb+texture(uSrc,vUv-vec2(0,d.y)).rgb)*2.;
+  c+=texture(uSrc,vUv+d).rgb+texture(uSrc,vUv-d).rgb+texture(uSrc,vUv+vec2(d.x,-d.y)).rgb+texture(uSrc,vUv+vec2(-d.x,d.y)).rgb; o=vec4(c/16.,1.);
+}`;
+const COMP_FS = `#version 300 es
+precision highp float; in vec2 vUv;
+uniform sampler2D uHdr, uBloom; uniform float uExposure, uBloomAmt, uLevels; uniform int uFrame; out vec4 o;
+float h12(vec2 p){ vec3 p3=fract(vec3(p.xyx)*.1031); p3+=dot(p3,p3.yzx+33.33); return fract((p3.x+p3.y)*p3.z); }
+vec3 aces(vec3 x){ const float a=2.51,b=0.03,c=2.43,d=0.59,e=0.14; return clamp((x*(a*x+b))/(x*(c*x+d)+e),0.,1.); }
+void main(){
+  vec2 off=(vUv-0.5)*0.0018; vec3 c=vec3(texture(uHdr,vUv+off).r, texture(uHdr,vUv).g, texture(uHdr,vUv-off).b);
+  c=mix(c,texture(uBloom,vUv).rgb/uLevels,uBloomAmt);
+  float ex=uExposure*clamp(0.32/(dot(textureLod(uHdr,vec2(0.5),12.).rgb,vec3(0.2126,0.7152,0.0722))+1e-4),0.15,12.);
+  c=pow(aces(c*ex),vec3(1./2.2)) * mix(0.55,1.,pow(16.*vUv.x*vUv.y*(1.-vUv.x)*(1.-vUv.y),0.22));
+  o=vec4(c+(h12(gl_FragCoord.xy+float(uFrame%97)*13.1)-0.5)*0.025,1.);
+}`;
+
+// =====================================================================
+//  ENGINE INITIALIZATION
+// =====================================================================
+const canvas=document.getElementById('c'); const errBox=document.getElementById('err');
+function fail(m){ errBox.style.display='block'; errBox.textContent=m; throw new Error(m); }
+const gl=canvas.getContext('webgl2',{antialias:false,alpha:false,depth:false,powerPreference:'high-performance'});
+if(!gl) fail('WebGL2 is not supported by this browser.');
+const hasFloat=!!gl.getExtension('EXT_color_buffer_float');
+const HDR=hasFloat?{i:gl.RGBA16F,f:gl.RGBA,t:gl.HALF_FLOAT}:{i:gl.RGBA8,f:gl.RGBA,t:gl.UNSIGNED_BYTE};
+
+function compile(type,src){
+  const s=gl.createShader(type); gl.shaderSource(s,src); gl.compileShader(s);
+  if(!gl.getShaderParameter(s,gl.COMPILE_STATUS)) fail('Shader error:\n'+gl.getShaderInfoLog(s)); return s;
+}
+function program(fs){
+  const p=gl.createProgram();
+  gl.attachShader(p,compile(gl.VERTEX_SHADER,VS)); gl.attachShader(p,compile(gl.FRAGMENT_SHADER,fs)); gl.linkProgram(p);
+  if(!gl.getProgramParameter(p,gl.LINK_STATUS)) fail('Link error:\n'+gl.getProgramInfoLog(p));
+  const u={}; const n=gl.getProgramParameter(p,gl.ACTIVE_UNIFORMS);
+  for(let i=0;i<n;i++){ const info=gl.getActiveUniform(p,i); u[info.name]=gl.getUniformLocation(p,info.name); } return {p,u};
+}
+function target(w,h,mip=false,wrapS=gl.CLAMP_TO_EDGE){
+  const tex=gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D,tex);
+  gl.texImage2D(gl.TEXTURE_2D,0,HDR.i,w,h,0,HDR.f,HDR.t,null);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,mip?gl.LINEAR_MIPMAP_LINEAR:gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,wrapS); gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);
+  if(mip) gl.generateMipmap(gl.TEXTURE_2D);
+  const fb=gl.createFramebuffer(); gl.bindFramebuffer(gl.FRAMEBUFFER,fb);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER,gl.COLOR_ATTACHMENT0,gl.TEXTURE_2D,tex,0);
+  return {tex,fb,w,h,del(){gl.deleteTexture(tex);gl.deleteFramebuffer(fb);}};
+}
+const P={lut:program(LUT_FS),scene:program(SCENE_FS),down:program(DOWN_FS),up:program(UP_FS),comp:program(COMP_FS)};
+const vao=gl.createVertexArray(); gl.bindVertexArray(vao); const lut=target(256,128,false,gl.REPEAT);
+let hdr=null, bloom=[];
+function bind(tex,unit){ gl.activeTexture(gl.TEXTURE0+unit); gl.bindTexture(gl.TEXTURE_2D,tex); }
+function draw(t){ gl.bindFramebuffer(gl.FRAMEBUFFER,t?t.fb:null); gl.viewport(0,0,t?t.w:canvas.width,t?t.h:canvas.height); gl.drawArrays(gl.TRIANGLES,0,3); }
+
+// ---------- UI ----------
+const $=id=>document.getElementById(id); const S={};
+['time','cloud','wave','fog','exp','bloom','fov','res'].forEach(k=>{
+  const el=$(k), v=$(k+'V');
+  const upd=()=>{ S[k]=parseFloat(el.value); if(v) v.textContent=k==='time'?fmtTime(S[k]):(+el.value).toFixed(2).replace(/\.00$/,''); if(k==='res') resize(); };
+  el.addEventListener('input',upd); S[k]=parseFloat(el.value); if(v) v.textContent=el.value;
+});
+function fmtTime(h){ const H=Math.floor(h), M=Math.floor((h-H)*60); return H+':'+String(M).padStart(2,'0'); }
+$('timeV').textContent=fmtTime(S.time);
+let uiHidden=false;
+$('toggle').onclick=()=>{ uiHidden=!uiHidden; $('panel').style.display=$('hud').style.display=uiHidden?'none':''; };
+
+function resize(){
+  const dpr=Math.min(window.devicePixelRatio||1,1.5);
+  canvas.width=Math.floor(innerWidth*dpr); canvas.height=Math.floor(innerHeight*dpr);
+  const sw=Math.max(64,Math.floor(canvas.width*S.res)), sh=Math.max(64,Math.floor(canvas.height*S.res));
+  if(hdr) hdr.del(); bloom.forEach(b=>b.del()); bloom=[]; hdr=target(sw,sh,true);
+  let w=sw>>1,h=sh>>1; for(let i=0;i<6&&w>2&&h>2;i++){ bloom.push(target(w,h)); w>>=1; h>>=1; }
+}
+addEventListener('resize',resize); resize();
+
+// ---------- CPU MATH SYNC ----------
+function hash(x,y){ let h=(Math.imul(x,1597334677)^Math.imul(y,3812015801))>>>0; h=Math.imul(h^(h>>>16),2246822519)>>>0; h=(h^(h>>>13))>>>0; return h/4294967295; }
+function noised(x,y){
+  const ix=Math.floor(x), iy=Math.floor(y), fx=x-ix, fy=y-iy;
+  const ux=fx*fx*fx*(fx*(fx*6-15)+10), uy=fy*fy*fy*(fy*(fy*6-15)+10);
+  const a=hash(ix,iy),b=hash(ix+1,iy),c=hash(ix,iy+1),d=hash(ix+1,iy+1);
+  const k1=b-a,k2=c-a,k4=a-b-c+d; return [a+k1*ux+k2*uy+k4*ux*uy, 30*fx*fx*(fx*(fx-2)+1)*(k1+k4*uy), 30*fy*fy*(fy*(fy-2)+1)*(k2+k4*ux)];
+}
+const ss=(a,b,x)=>{ const t=Math.min(Math.max((x-a)/(b-a),0),1); return t*t*(3-2*t); };
+function islandMask(x,z){
+  const w=(noised(x*0.0021,z*0.0021)[0]-0.5)*0.45+(noised(x*0.006,z*0.006)[0]-0.5)*0.15;
+  const r1=Math.hypot(x,(z+1100)*1.35)/1000+w, r2=Math.hypot((x+2000)*0.8,z+3400)/1500+w, r3=Math.hypot(x-2600,z+2600)/700+w;
+  return Math.max(Math.max(1-ss(0.25,1.05,r1),1.3*(1-ss(0.2,1,r2))),0.8*(1-ss(0.2,1,r3)));
+}
+function terrainH(x,z,oct=6){
+  const m=islandMask(x,z); if(m<0.001) return -30;
+  let px=x*0.0012, py=z*0.0012, a=0, b=1, dx=0, dy=0;
+  for(let i=0;i<oct;i++){ 
+    const n=noised(px,py); dx += n[1]*2.; dy += n[2]*2.; 
+    let v=1.-Math.abs(n[0]*2.-1.); a+=b*(v*v)/(1.+(dx*dx+dy*dy)*0.2); b*=0.45; 
+    const qx=0.8*px+0.6*py, qy=-0.6*px+0.8*py; px=qx*2.1; py=qy*2.1; 
+  } return -30+m*(a*350); 
+}
+function seaOct(uvx, uvy, choppy) {
+    let nx = noised(uvx, uvy)[0]; let ux = uvx + nx*2 - 1, uy = uvy + nx*2 - 1;
+    let wvx = 1 - Math.abs(Math.sin(ux)), wvy = 1 - Math.abs(Math.sin(uy));
+    let swvx = Math.abs(Math.cos(ux)), swvy = Math.abs(Math.cos(uy));
+    wvx = wvx*(1-wvx) + swvx*wvx; wvy = wvy*(1-wvy) + swvy*wvy;
+    return Math.pow(1 - Math.pow(wvx * wvy, 0.65), choppy);
+}
+function seaMap(px, pz, it, t) {
+    let freq=0.16, amp=0.6*S.wave, choppy=4.0, T=1.0+t*0.8, uvx=px*0.75, uvy=pz, h=0;
+    for (let i=0; i<it; i++) {
+        h += (seaOct((uvx+T)*freq, (uvy+T)*freq, choppy) + seaOct((uvx-T)*freq, (uvy-T)*freq, choppy)) * amp;
+        let nx = 1.6*uvx + 1.2*uvy, ny = -1.2*uvx + 1.6*uvy; uvx=nx; uvy=ny; freq*=1.9; amp*=0.22; choppy=choppy*0.8+0.2;
+    } return h - 0.5*S.wave;
+}
+
+// ---------- Game Objects & Setup ----------
+let spawnX = 0, spawnZ = -800;
+while(terrainH(spawnX, spawnZ, 6) < 1.0 && spawnZ > -2000) spawnZ -= 10;
+const player = { pos:[spawnX, terrainH(spawnX,spawnZ,6)+2, spawnZ], vel:[0,0,0], onGround:false, state:'walk' };
+const boat = { pos:[spawnX+15, 0, spawnZ+25], vel:[0,0,0], yaw:1.5, mat:[1,0,0,0,1,0,0,0,1], invMat:[1,0,0,0,1,0,0,0,1] };
+const cam = { pos:[0,0,0], yaw:2.0, pitch:0.1 };
+
+const keys={}; let ePressed = false;
+addEventListener('keydown',e=>{ keys[e.code]=true; if(e.code==='KeyH') $('toggle').click(); if(e.code==='KeyE') ePressed=true; });
+addEventListener('keyup',e=>keys[e.code]=false);
+canvas.addEventListener('click',()=>{ 
+  canvas.requestPointerLock(); $('hint').style.opacity=0; 
+  try { initAudio(); } catch(e){} 
+});
+addEventListener('mousemove',e=>{
+  if(document.pointerLockElement!==canvas) return;
+  cam.yaw+=e.movementX*0.0022; cam.pitch=Math.max(-1.5,Math.min(1.5,cam.pitch-e.movementY*0.0022));
+});
+
+// ---------- AUDIO ENGINE ----------
+let actx, windVol, waveVol, boatVol, engineOsc;
+function initAudio() {
+  if(actx) return;
+  actx = new (window.AudioContext || window.webkitAudioContext)();
+  
+  // White Noise Gen
+  const size = actx.sampleRate * 2;
+  let noiseBuf = actx.createBuffer(1, size, actx.sampleRate);
+  let output = noiseBuf.getChannelData(0);
+  for (let i = 0; i < size; i++) output[i] = Math.random() * 2 - 1;
+
+  // Wind
+  let windSrc = actx.createBufferSource(); windSrc.buffer = noiseBuf; windSrc.loop = true;
+  let windFilter = actx.createBiquadFilter(); windFilter.type = 'lowpass'; windFilter.frequency.value = 300;
+  windVol = actx.createGain(); windVol.gain.value = 0;
+  windSrc.connect(windFilter).connect(windVol).connect(actx.destination); windSrc.start();
+
+  // Crashing Waves
+  let waveSrc = actx.createBufferSource(); waveSrc.buffer = noiseBuf; waveSrc.loop = true;
+  let waveFilter = actx.createBiquadFilter(); waveFilter.type = 'bandpass'; waveFilter.frequency.value = 150; waveFilter.Q.value = 0.5;
+  waveVol = actx.createGain(); waveVol.gain.value = 0;
+  waveSrc.connect(waveFilter).connect(waveVol).connect(actx.destination); waveSrc.start();
+
+  // Boat Engine
+  engineOsc = actx.createOscillator(); engineOsc.type = 'sawtooth';
+  let engFilter = actx.createBiquadFilter(); engFilter.type = 'lowpass'; engFilter.frequency.value = 120;
+  boatVol = actx.createGain(); boatVol.gain.value = 0;
+  engineOsc.connect(engFilter).connect(boatVol).connect(actx.destination); engineOsc.start();
+}
+
+
+// =====================================================================
+//  THE PRATYAKSH SHOWDOWN ENGINE
+//  PRK-4 (Matrix-Free Rational) vs Classical RK4 vs Euler
+// =====================================================================
+let currentSolver = 'prk4';
+let waveStiffness = 140.0;
+let hasDetonated = false;
+let lastD = 0.0;
+let shockWavePulse = 0.0;
+
+const stiffInput = $('stiff');
+if (stiffInput) {
+    stiffInput.addEventListener('input', (e) => {
+        waveStiffness = parseFloat(e.target.value);
+        $('stiffV').textContent = waveStiffness;
+    });
+}
+
+window.setSolver = function(type) {
+    currentSolver = type;
+    $('btn-prk4').className = 'solver-btn' + (type === 'prk4' ? ' active-prk' : '');
+    $('btn-rk4').className = 'solver-btn' + (type === 'rk4' ? ' active-rk4' : '');
+    $('btn-euler').className = 'solver-btn' + (type === 'euler' ? ' active-euler' : '');
+    
+    const badge = $('solver-badge');
+    if (type === 'prk4') {
+        badge.style.color = '#2ecc71';
+        badge.innerHTML = 'Active Solver: PRATYAKSH-II (PRK-4 Scale-Invariant)';
+    } else if (type === 'rk4') {
+        badge.style.color = '#e74c3c';
+        badge.innerHTML = 'Active Solver: Classical RK4 (Unprotected Polynomial)';
+    } else {
+        badge.style.color = '#3498db';
+        badge.innerHTML = 'Active Solver: Explicit Euler (1st-Order Baseline)';
+    }
+    if (type === 'prk4' && hasDetonated) {
+        window.rebootPhysics();
+    }
+};
+
+window.triggerWaveShock = function() {
+    shockWavePulse = 4.0;
+    boat.vel[1] += 42.0; // Violent 10G hydrodynamic upward impulse
+    boat.vel[0] += (Math.random() - 0.5) * 20.0;
+    boat.vel[2] += (Math.random() - 0.5) * 20.0;
+};
+
+window.rebootPhysics = function() {
+    hasDetonated = false;
+    $('alarm-banner').style.display = 'none';
+    let pX = player.pos[0], pZ = player.pos[2];
+    if (isNaN(pX) || !isFinite(pX) || Math.abs(pX) > 5000) {
+        pX = spawnX; pZ = spawnZ;
+        player.pos = [pX, terrainH(pX, pZ, 6) + 2, pZ];
+        player.vel = [0, 0, 0];
+    }
+    let sY = seaMap(pX + 15, pZ + 25, 4, simTime);
+    boat.pos = [pX + 15, sY, pZ + 25];
+    boat.vel = [0, 0, 0];
+    boat.yaw = 1.5;
+};
+
+// 1. Master Scale-Invariant Pratyaksh-II (PRK-4)
+function pratyaksh_step(state, dt, physics_func) {
+    let k1 = physics_func(state);
+    let s2 = state.map((v, i) => v + 0.5 * dt * k1[i]);
+    
+    let k2 = physics_func(s2);
+    let s3 = state.map((v, i) => v + 0.5 * dt * k2[i]);
+    
+    let k3 = physics_func(s3);
+    let s4 = state.map((v, i) => v + dt * k3[i]);
+    
+    let k4 = physics_func(s4);
+
+    let num = [];
+    let curv_norm_sq = 0.0;
+    let y_norm_sq = 0.0;
+    let k1_norm_sq = 0.0;
+
+    for (let i = 0; i < state.length; i++) {
+        let K1 = dt * k1[i];
+        let K2 = dt * k2[i];
+        let K3 = dt * k3[i];
+        let K4 = dt * k4[i];
+
+        num.push((K1 + 2.0*K2 + 2.0*K3 + K4) / 6.0);
+        
+        let curv = K4 - K3 - K2 + K1;
+        curv_norm_sq += curv * curv;
+        y_norm_sq += state[i] * state[i];
+        k1_norm_sq += K1 * K1;
+    }
+
+    // Scale invariant Sn
+    let Sn = Math.sqrt(y_norm_sq) + Math.sqrt(k1_norm_sq) + 1e-6;
+    let C_hat = Math.sqrt(curv_norm_sq) / Sn;
+    let D = (0.1 * C_hat) * (0.1 * C_hat);
+    lastD = D;
+
+    // Asymptotic denominator shock absorber
+    let den = 1.0 + D;
+    return state.map((v, i) => v + num[i] / den);
+}
+
+// 2. Classical Unprotected 4th-Order Runge-Kutta
+function rk4_step(state, dt, physics_func) {
+    let k1 = physics_func(state);
+    let s2 = state.map((v, i) => v + 0.5 * dt * k1[i]);
+    
+    let k2 = physics_func(s2);
+    let s3 = state.map((v, i) => v + 0.5 * dt * k2[i]);
+    
+    let k3 = physics_func(s3);
+    let s4 = state.map((v, i) => v + dt * k3[i]);
+    
+    let k4 = physics_func(s4);
+
+    lastD = 0.0;
+    return state.map((v, i) => {
+        let K1 = dt * k1[i];
+        let K2 = dt * k2[i];
+        let K3 = dt * k3[i];
+        let K4 = dt * k4[i];
+        return v + (K1 + 2.0*K2 + 2.0*K3 + K4) / 6.0;
+    });
+}
+
+// 3. Explicit Euler Baseline
+function euler_step(state, dt, physics_func) {
+    let k1 = physics_func(state);
+    lastD = 0.0;
+    return state.map((v, i) => v + dt * k1[i]);
+}
+
+// Unified Dispatcher
+function solve_step(state, dt, physics_func) {
+    if (currentSolver === 'prk4') return pratyaksh_step(state, dt, physics_func);
+    if (currentSolver === 'rk4') return rk4_step(state, dt, physics_func);
+    return euler_step(state, dt, physics_func);
+}
+
+// ---------- Main Loop ----------
+let last=performance.now(), frame=0, fpsAcc=0, fpsN=0, fps=0, simTime=0;
+const wind_vec=[0,0];
+
+function loop(now){
+  const dt=Math.min(0.05,(now-last)/1000); last=now; simTime+=dt; frame++;
+  fpsAcc+=dt; fpsN++; if(fpsAcc>0.5){ fps=fpsN/fpsAcc; fpsAcc=0; fpsN=0; }
+
+  const cp=Math.cos(cam.pitch), cf=[Math.sin(cam.yaw)*cp, Math.sin(cam.pitch), -Math.cos(cam.yaw)*cp];
+  let cr=[-cf[2],0,cf[0]]; const rl=Math.hypot(cr[0],cr[2])||1; cr=[cr[0]/rl,0,cr[2]/rl];
+  const cu=[cr[1]*cf[2]-cr[2]*cf[1], cr[2]*cf[0]-cr[0]*cf[2], cr[0]*cf[1]-cr[1]*cr[0]];
+  let pDist = Math.hypot(player.pos[0]-boat.pos[0], player.pos[2]-boat.pos[2]);
+
+  // Interaction Toggle
+  if (ePressed) {
+      if (player.state === 'walk' && pDist < 8.0 && !hasDetonated) { player.state = 'boat'; } 
+      else if (player.state === 'boat') {
+          player.state = 'walk';
+          let eject = [Math.sin(boat.yaw + Math.PI/2)*3.5, 2, Math.cos(boat.yaw + Math.PI/2)*3.5];
+          player.pos[0] = boat.pos[0] + eject[0];
+          player.pos[1] = Math.max(boat.pos[1] + eject[1], terrainH(player.pos[0], player.pos[2], 7)+2);
+          player.pos[2] = boat.pos[2] + eject[2];
+          player.vel = [0, 6, 0];
+      }
+      ePressed = false;
+  }
+  let ax = $('action');
+  if (player.state === 'walk' && pDist < 8.0 && !hasDetonated) { ax.style.display = 'block'; ax.textContent = 'Press E to Drive Boat'; }
+  else if (player.state === 'boat') { ax.style.display = 'block'; ax.textContent = 'Press E to Exit Boat'; }
+  else { ax.style.display = 'none'; }
+
+
+  // ==============================================================
+  // 1) PLAYER PHYSICS (Unified Solver)
+  // ==============================================================
+  let accX = 0, accZ = 0;
+  let pAcc = keys.ShiftLeft ? 40 : 16; 
+  if (!player.onGround) pAcc *= 0.1;
+
+  if (player.state === 'walk') {
+      let fHor = [Math.sin(cam.yaw), 0, -Math.cos(cam.yaw)];
+      if(keys.KeyW) { accX += fHor[0]*pAcc; accZ += fHor[2]*pAcc; }
+      if(keys.KeyS) { accX -= fHor[0]*pAcc; accZ -= fHor[2]*pAcc; }
+      if(keys.KeyD) { accX += cr[0]*pAcc;   accZ += cr[2]*pAcc; }
+      if(keys.KeyA) { accX -= cr[0]*pAcc;   accZ -= cr[2]*pAcc; }
+  }
+
+  const player_ode = (state) => {
+      let vx = state[3], vy = state[4], vz = state[5];
+      let friction = player.onGround ? 8.0 : 1.0; 
+      let gravity = -25.0;
+      return [vx, vy, vz, accX - friction * vx, gravity, accZ - friction * vz];
+  };
+
+  let p_state = [player.pos[0], player.pos[1], player.pos[2], player.vel[0], player.vel[1], player.vel[2]];
+  let new_p = solve_step(p_state, dt, player_ode);
+  
+  if (!isNaN(new_p[0]) && isFinite(new_p[0])) {
+      player.pos = [new_p[0], new_p[1], new_p[2]];
+      player.vel = [new_p[3], new_p[4], new_p[5]];
+  }
+  
+  let floorH = Math.max(terrainH(player.pos[0], player.pos[2], 7), seaMap(player.pos[0], player.pos[2], 4, simTime)-1.2);
+  if (player.pos[1] <= floorH + 0.1) {
+      player.pos[1] = floorH + 0.1; player.vel[1] = 0; player.onGround = true;
+      if (keys.Space && player.state === 'walk') player.vel[1] = 8.5; // Jump
+  } else { player.onGround = false; }
+
+
+  // ==============================================================
+  // 2) BOAT HYDRODYNAMICS ODE (6D Stiff Buoyancy & Slamming)
+  // ==============================================================
+  let bThrust = 0;
+  if (player.state === 'boat' && !hasDetonated) {
+      if(keys.KeyW) bThrust = 32; if(keys.KeyS) bThrust = -14;
+      if(keys.KeyA) boat.yaw += 1.8 * dt; if(keys.KeyD) boat.yaw -= 1.8 * dt;
+  }
+  let bf = [Math.sin(boat.yaw), 0, Math.cos(boat.yaw)];
+  let thrust_x = bf[0] * bThrust;
+  let thrust_z = bf[2] * bThrust;
+
+  const boat_ode = (state) => {
+      // state: [x, y, z, vx, vy, vz]
+      let px = state[0], py = state[1], pz = state[2];
+      let vx = state[3], vy = state[4], vz = state[5];
+
+      let waterH = seaMap(px, pz, 4, simTime);
+      if (shockWavePulse > 0.001) {
+          waterH += Math.sin(simTime * 9.0) * shockWavePulse * 1.6;
+      }
+      
+      let depth = waterH - py; // > 0 indicates hull submergence
+      let spdXZ = Math.hypot(vx, vz);
+
+      let ax = 0, ay = -9.81, az = 0;
+
+      if (depth > 0) {
+          // Stiff hydrodynamic buoyancy spring
+          let fBuoy = waveStiffness * depth;
+          // Stiff nonlinear hydrodynamic slamming damping
+          let fDamp = (9.0 + 3.0 * Math.abs(vy)) * vy;
+          ay = -9.81 + fBuoy - fDamp;
+
+          // Water drag
+          let dragXZ = 2.4 + 0.4 * spdXZ;
+          ax = thrust_x - dragXZ * vx;
+          az = thrust_z - dragXZ * vz;
+      } else {
+          // In Flight
+          ay = -16.0 - 0.05 * vy;
+          ax = thrust_x * 0.2 - 0.08 * vx;
+          az = thrust_z * 0.2 - 0.08 * vz;
+      }
+
+      return [vx, vy, vz, ax, ay, az];
+  };
+
+  if (!hasDetonated) {
+      let b_state = [boat.pos[0], boat.pos[1], boat.pos[2], boat.vel[0], boat.vel[1], boat.vel[2]];
+      let new_b = solve_step(b_state, dt, boat_ode);
+
+      let bExploded = false;
+      for (let i = 0; i < 6; i++) {
+          if (isNaN(new_b[i]) || !isFinite(new_b[i]) || Math.abs(new_b[i]) > 20000.0) {
+              bExploded = true;
+              break;
+          }
+      }
+
+      if (bExploded) {
+          hasDetonated = true;
+          $('alarm-banner').style.display = 'block';
+          $('alarm-banner').innerHTML = `🚨 <b>${currentSolver.toUpperCase()} DETONATED INTO ${isNaN(new_b[1]) ? 'NaN' : 'INFINITY'}!</b><br>Extreme wave stiffness (${waveStiffness}) shattered explicit CFL limit! Switch to PRK-4 or click Reboot!`;
+          boat.pos[1] = 9999.0;
+          boat.vel = [NaN, NaN, NaN];
+          if (player.state === 'boat') { player.state = 'walk'; player.vel = [0, 0, 0]; }
+      } else {
+          boat.pos = [new_b[0], new_b[1], new_b[2]];
+          boat.vel = [new_b[3], new_b[4], new_b[5]];
+      }
+  }
+
+  if (shockWavePulse > 0) {
+      shockWavePulse = Math.max(0, shockWavePulse - dt * 2.0);
+  }
+
+  // Boat Orientation from wave gradient
+  let hC = seaMap(boat.pos[0], boat.pos[2], 4, simTime);
+  let hF = seaMap(boat.pos[0] + bf[0]*2.5, boat.pos[2] + bf[2]*2.5, 4, simTime);
+  let br = [Math.sin(boat.yaw - Math.PI/2), 0, Math.cos(boat.yaw - Math.PI/2)];
+  let hR = seaMap(boat.pos[0] + br[0]*1.2, boat.pos[2] + br[2]*1.2, 4, simTime);
+  
+  let fW = [bf[0]*2.5, hF-hC, bf[2]*2.5]; let fwLen = Math.hypot(fW[0], fW[1], fW[2]) || 1; fW = [fW[0]/fwLen, fW[1]/fwLen, fW[2]/fwLen];
+  let rW = [br[0]*1.2, hR-hC, br[2]*1.2]; let rwLen = Math.hypot(rW[0], rW[1], rW[2]) || 1; rW = [rW[0]/rwLen, rW[1]/rwLen, rW[2]/rwLen];
+  let uW = [ rW[1]*fW[2]-rW[2]*fW[1], rW[2]*fW[0]-rW[0]*fW[2], rW[0]*fW[1]-rW[1]*fW[0] ];
+  let uwLen = Math.hypot(uW[0], uW[1], uW[2]) || 1; uW = [uW[0]/uwLen, uW[1]/uwLen, uW[2]/uwLen];
+  rW = [ fW[1]*uW[2]-fW[2]*uW[1], fW[2]*uW[0]-fW[0]*uW[2], fW[0]*uW[1]-fW[1]*uW[0] ];
+  boat.mat = [ rW[0], rW[1], rW[2], uW[0], uW[1], uW[2], fW[0], fW[1], fW[2] ];
+  boat.invMat = [ rW[0], uW[0], fW[0], rW[1], uW[1], fW[1], rW[2], uW[2], fW[2] ];
+
+
+  // ==============================================================
+  // 3) CAMERA POSITIONING & AUDIO
+  // ==============================================================
+  if (player.state === 'walk') cam.pos = [player.pos[0], player.pos[1] + 1.6, player.pos[2]];
+  else cam.pos = [boat.pos[0] - fW[0]*1.8 + uW[0]*1.2, boat.pos[1] - fW[1]*1.8 + uW[1]*1.2, boat.pos[2] - fW[2]*1.8 + uW[2]*1.2];
+
+  if (actx) {
+      let spd = player.state==='walk' ? Math.hypot(player.vel[0], player.vel[2]) : Math.hypot(boat.vel[0], boat.vel[2]);
+      windVol.gain.setTargetAtTime(0.02 + spd * 0.005, actx.currentTime, 0.1);
+      
+      let distToWater = Math.max(0, cam.pos[1] - S.wave);
+      let waveSwell = Math.sin(simTime * 1.2) * 0.5 + 0.5;
+      waveVol.gain.setTargetAtTime(Math.max(0, 0.25 - distToWater * 0.004) * (0.5 + waveSwell*0.5) * S.wave, actx.currentTime, 0.2);
+
+      if (player.state === 'boat') {
+          let bSpd = Math.hypot(boat.vel[0], boat.vel[2]);
+          boatVol.gain.setTargetAtTime(0.08 + bSpd * 0.005, actx.currentTime, 0.1);
+          engineOsc.frequency.setTargetAtTime(60 + bSpd * 3.5, actx.currentTime, 0.1);
+      } else {
+          boatVol.gain.setTargetAtTime(0, actx.currentTime, 0.1);
+      }
+  }
+
+  // ==============================================================
+  // 4) RENDERING PIPELINE
+  // ==============================================================
+  if($('anim').checked){ S.time+=dt*0.05; if(S.time>24.0) S.time=0.0; $('time').value=S.time; $('timeV').textContent=fmtTime(S.time); }
+  const a=(S.time-6)/12*Math.PI; const el=Math.sin(a)*0.95, az=a;
+  const sun=[Math.cos(el)*Math.sin(az), Math.sin(el), Math.cos(el)*Math.cos(az)];
+  wind_vec[0]+=dt*0.004; wind_vec[1]+=dt*0.0015;
+
+  gl.bindVertexArray(vao); gl.disable(gl.BLEND);
+
+  gl.useProgram(P.lut.p); gl.uniform3fv(P.lut.u.uSunDir,sun); draw(lut);
+
+  const s=P.scene; gl.useProgram(s.p);
+  bind(lut.tex,0); gl.uniform1i(s.u.uSky,0);
+  gl.uniform2f(s.u.uRes,hdr.w,hdr.h); gl.uniform1f(s.u.uTime,simTime);
+  gl.uniform3fv(s.u.uCamPos,cam.pos);
+  gl.uniformMatrix3fv(s.u.uCamMat,false,[cr[0],cr[1],cr[2],cu[0],cu[1],cu[2],-cf[0],-cf[1],-cf[2]]);
+  gl.uniform3fv(s.u.uSunDir,sun);
+  gl.uniform1f(s.u.uWaveH,S.wave); gl.uniform1f(s.u.uCloud,S.cloud); gl.uniform1f(s.u.uFog,S.fog);
+  gl.uniform1f(s.u.uFocal,1/Math.tan(S.fov*Math.PI/360)); gl.uniform1f(s.u.uSunI,20);
+  gl.uniform2fv(s.u.uWind,wind_vec); gl.uniform1i(s.u.uFrame,frame);
+  
+  gl.uniform3fv(s.u.uBoatPos, boat.pos);
+  gl.uniformMatrix3fv(s.u.uBoatMat, false, boat.mat);
+  gl.uniformMatrix3fv(s.u.uBoatInvMat, false, boat.invMat);
+  gl.uniform2f(s.u.uBoatVel, boat.vel[0], boat.vel[2]);
+  
+  draw(hdr); gl.bindTexture(gl.TEXTURE_2D,hdr.tex); gl.generateMipmap(gl.TEXTURE_2D);
+
+  gl.useProgram(P.down.p); let src=hdr;
+  for(const b of bloom){ bind(src.tex,0); gl.uniform1i(P.down.u.uSrc,0); gl.uniform2f(P.down.u.uTexel,1/src.w,1/src.h); draw(b); src=b; }
+  gl.useProgram(P.up.p); gl.enable(gl.BLEND); gl.blendFunc(gl.ONE,gl.ONE);
+  for(let i=bloom.length-1;i>0;i--){ bind(bloom[i].tex,0); gl.uniform1i(P.up.u.uSrc,0); gl.uniform2f(P.up.u.uTexel,1/bloom[i].w,1/bloom[i].h); draw(bloom[i-1]); }
+  gl.disable(gl.BLEND);
+
+  const c=P.comp; gl.useProgram(c.p);
+  bind(hdr.tex,0); gl.uniform1i(c.u.uHdr,0); bind(bloom[0].tex,1); gl.uniform1i(c.u.uBloom,1);
+  gl.uniform1f(c.u.uExposure,S.exp); gl.uniform1f(c.u.uBloomAmt,S.bloom); gl.uniform1f(c.u.uLevels,bloom.length); gl.uniform1i(c.u.uFrame,frame); draw(null);
+
+  if(!uiHidden && frame%5===0){
+    let spd = player.state==='walk' ? Math.hypot(player.vel[0],player.vel[2]) : Math.hypot(boat.vel[0],boat.vel[2]);
+    $('stats').innerHTML=`${fps.toFixed(0)} FPS · ${hdr.w}×${hdr.h}<br>`+
+      `Pos ${cam.pos.map(v=>v.toFixed(0)).join(', ')} · State: ${player.state.toUpperCase()}<br>`+
+      `Speed ${(spd*3.6).toFixed(1)} km/h · Altitude ${cam.pos[1].toFixed(1)} m`;
+    
+    let bY = isNaN(boat.pos[1]) ? 'NaN' : boat.pos[1].toFixed(1);
+    let bVy = isNaN(boat.vel[1]) ? 'NaN' : boat.vel[1].toFixed(1);
+    let guardColor = lastD > 1.0 ? '#e74c3c' : (lastD > 0.05 ? '#f39c12' : '#2ecc71');
+    $('telemetry-row').innerHTML = `Guardrail D: <b style="color:${guardColor}">${lastD.toFixed(6)}</b> | ` +
+      `Frame: ${(dt*1000).toFixed(1)}ms | Boat Y: ${bY}m | Vy: ${bVy}m/s | Stiff: ${waveStiffness}`;
+  }
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
