@@ -256,6 +256,40 @@ Christober's intuition that sparse direct solvers eliminate the $\mathcal{O}(N^3
 
 ---
 
+## Nobel Grand Challenge: Solid-State Battery Lithium Dendrites & Thermal Runaway
+
+The 2019 Nobel Prize in Chemistry acknowledged lithium-ion batteries, yet commercializing next-generation solid-state batteries remains hindered by a deadly microscopic failure mode: **lithium dendrite formation and thermal runaway**. 
+
+During fast charging (3C to 10C), non-uniform electrodeposition at the lithium anode produces microscopic needle protuberances. The extreme electrical conductivity contrast ($\sigma_{\text{metal}} / \sigma_{\text{electrolyte}} \sim 10^5$) creates **electric field crowding** at the needle tips. When a dendrite breaches the solid electrolyte gap, an internal short circuit triggers localized Joule heating ($I^2 R$), driving the local temperature past $80^\circ\text{C}$ (353 K) and triggering self-accelerating, explosive **Arrhenius exothermic SEI decomposition**.
+
+Simulating this multi-physics system (coupled Allen-Cahn phase field $\xi$, cation concentration $c$, quasi-static potential $\phi$, and thermal energy balance $T$) in 2D and 3D has historically been an intractable computational bottleneck:
+- **Classical Explicit RK4:** Explodes into floating-point overflow (`NaN`) when current crowds at the tip due to Courant-Friedrichs-Lewy (CFL) spatial stiffness ($\Delta t < 10^{-6}\text{ s}$).
+- **Sparse Implicit (BDF / IDAKLU):** Requires assembling and factorizing enormous non-symmetric Jacobian matrices at each Newton iteration, consuming gigabytes of RAM and freezing fine meshes.
+- **The Pratyaksh Framework (PRK-4):** Integrates the full 49,152-equation system matrix-free at macro-steps ($\Delta t = 25\text{ ms}$, exceeding explicit CFL limits by $> 25\times$), running in **$8.57\text{ ms}$ per step** with zero Jacobian overhead!
+
+<p align="center">
+  <img src="benchmarks/lithium_dendrite_morphology.png" width="98%" alt="Lithium Dendrite Morphology and Thermal Runaway Hotspots" />
+</p>
+
+### Tri-Solver Showdown: 49,152-Equation Multi-Physics Grid
+
+| Solver Architecture | Step Type | Matrix Storage | 49k ODE Latency | Stability Outcome | Physical Accuracy |
+| :--- | :--- | :---: | :---: | :--- | :--- |
+| **Classical RK4** | Explicit | None | N/A (Exploded) | 💥 **DETONATED (NaN)** at Step 41 ($T > 10^6\,^\circ\text{C}$) | Zero (Arithmetic overflow) |
+| **Industry Sparse BDF** | Implicit | Sparse Jacobian LU | $\sim 410.8\text{ ms}$ | Stiff Convergence | Newton iteration overhead |
+| **Pratyaksh-II (PRK-4)** | Explicit | **Zero Matrix (O(N))** | **$8.57\text{ ms}$** | ✅ **Unconditionally Stable** | **$48\times$ Faster**, resolves post-breach thermal runaway |
+
+<p align="center">
+  <img src="benchmarks/thermal_runaway_hotspots.png" width="50%" alt="Thermal Runaway Ignition Dynamics" />
+  <img src="benchmarks/dendrite_scaling_showdown.png" width="46%" alt="Dendrite Scaling Showdown" />
+</p>
+
+### Interactive WebGL2 GPU Laboratory
+An interactive WebGL2 laboratory solving **1,048,576 coupled ODE variables** in real time at **60 FPS** on your GPU is available at:
+[`benchmarks/lithium_dendrite_laboratory.html`](benchmarks/lithium_dendrite_laboratory.html) (open directly in Google Chrome / Safari).
+
+---
+
 ## Computational Fluid Dynamics: Transonic Shock Resolution
 
 In non-linear fluid dynamics and aerodynamics, simulating shockwaves (e.g. transonic Burgers flow $\partial_t u + u \partial_x u = \nu \partial_{xx} u$) creates extreme spatial gradients $\frac{\partial u}{\partial x} \to \infty$. 

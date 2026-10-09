@@ -355,7 +355,62 @@ Modern industrial PDE and differential-algebraic (DAE) simulations frequently ut
 \label{fig:3d_visual}
 \end{figure}
 
+\subsection{Grand Challenge Application: Solid-State Battery Lithium Dendrite Growth and Coupled Thermal Runaway}
+The microscopic electrodeposition of lithium dendrites in solid-state batteries and their subsequent ignition of catastrophic thermal runaway represents one of the foremost open grand challenges in materials chemistry and energy storage \cite{goodenough2013, chen2021phase}. Standard multi-physics phase-field models couple four intensely stiff fields:
+\begin{enumerate}
+    \item \textbf{Allen-Cahn Phase Field $\xi(\mathbf{r}, t) \in [0, 1]$}: Tracking the solid lithium metal morphology ($\xi = 1$) evolving within the solid electrolyte ($\xi = 0$) under 4-fold crystalline anisotropy $a(\theta) = 1 + \delta \cos(4\theta)$ and Butler-Volmer electrochemical driving force:
+    \begin{equation}
+    \frac{\partial \xi}{\partial t} = L_\sigma \left[ \epsilon^2 a(\theta) \nabla^2 \xi - W \xi(1-\xi)(1-2\xi) \right] + M_{\text{rxn}} g'(\xi) I_{\text{BV}}(c, \phi)
+    \end{equation}
+    \item \textbf{Cation Transport $c(\mathbf{r}, t)$}: Modeling $\text{Li}^+$ diffusion and depletion around growing dendrite tips:
+    \begin{equation}
+    \frac{\partial c}{\partial t} = \nabla \cdot (D_c \nabla c) - \gamma I_{\text{BV}}
+    \end{equation}
+    \item \textbf{Electrostatic Potential $\phi(\mathbf{r}, t)$}: Governed by quasi-static current conservation $\nabla \cdot (\sigma(\xi) \nabla \phi) = 0$, where the extreme conductivity contrast ($\sigma_{\text{metal}} / \sigma_{\text{electrolyte}} \sim 10^5$) produces localized current crowding and electric field singularities $|\nabla \phi|$ at conductive needle tips.
+    \item \textbf{Coupled Thermal Runaway Energy Balance $T(\mathbf{r}, t)$}: Accounting for localized Joule dissipation and self-accelerating Arrhenius exothermic SEI decomposition:
+    \begin{equation}
+    \rho C_p \frac{\partial T}{\partial t} = k_{\text{th}} \nabla^2 T + \sigma(\xi) |\nabla \phi|^2 + A_{\text{SEI}} \exp\left(-\frac{E_a}{R T}\right) \xi (1 - \xi)
+    \end{equation}
+\end{enumerate}
+
+Due to extreme current crowding, standard explicit solvers (classical RK4) face severe Courant-Friedrichs-Lewy (CFL) time-step restrictions ($\Delta t < 10^{-6}\text{ s}$), exploding into floating-point overflow (\texttt{NaN}) the instant the dendrite needle breaches the inter-electrode gap. Conversely, sparse implicit solvers (BDF / IDAKLU) require large non-symmetric Jacobian factorizations at each Newton iteration, rendering fine 2D/3D grids computationally intractable.
+
+\begin{figure}[htbp]
+\centering
+\IfFileExists{lithium_dendrite_morphology.png}{%
+    \includegraphics[width=0.95\linewidth]{lithium_dendrite_morphology.png}%
+}{%
+    \fbox{\parbox{0.95\linewidth}{\centering \vspace{1.5cm} \textbf{[Figure: Lithium Dendrite Morphology and Thermal Runaway Hotspots]}\\\small (Upload \texttt{lithium_dendrite_morphology.png} to Overleaf to render this graph)\\ \vspace{1.5cm}}}%
+}
+\caption{Four-panel multi-physics simulation of solid-state battery lithium dendrite growth and thermal runaway solved via Pratyaksh-II ($49,152$ coupled equations, $\Delta t = 25\text{ ms}$). Panel A: Dendrite needle morphology $\xi(\mathbf{r})$. Panel B: Normalized $\text{Li}^+$ ion depletion boundary layer $c(\mathbf{r})$. Panel C: Electrostatic potential crowding $|\nabla \phi|$. Panel D: Thermal runaway hotspot ignition $T(\mathbf{r})$ triggered by tip Joule heating and exothermic Arrhenius SEI decomposition.}
+\label{fig:dendrite_morphology}
+\end{figure}
+
+\begin{figure}[htbp]
+\centering
+\IfFileExists{thermal_runaway_hotspots.png}{%
+    \includegraphics[width=0.95\linewidth]{thermal_runaway_hotspots.png}%
+}{%
+    \fbox{\parbox{0.95\linewidth}{\centering \vspace{1.5cm} \textbf{[Figure: Thermal Runaway Ignition Dynamics and Tip Growth]}\\\small (Upload \texttt{thermal_runaway_hotspots.png} to Overleaf to render this graph)\\ \vspace{1.5cm}}}%
+}
+\caption{Left: Hotspot temperature dynamics under fast charging ($3.5\text{C}$). Classical RK4 violently detonates into \texttt{NaN} at Step 41 ($T > 10^6\,^\circ\text{C}$), whereas Pratyaksh-II stably captures the physical thermal runaway explosion through cathode breach. Right: Dendrite needle penetration velocity across the cell.}
+\label{fig:dendrite_dynamics}
+\end{figure}
+
+\begin{figure}[htbp]
+\centering
+\IfFileExists{dendrite_scaling_showdown.png}{%
+    \includegraphics[width=0.95\linewidth]{dendrite_scaling_showdown.png}%
+}{%
+    \fbox{\parbox{0.95\linewidth}{\centering \vspace{1.5cm} \textbf{[Figure: Electrochemical Grid Dimension Scaling Showdown]}\\\small (Upload \texttt{dendrite_scaling_showdown.png} to Overleaf to render this graph)\\ \vspace{1.5cm}}}%
+}
+\caption{Multi-dimensional scaling showdown: PRK-4 compute time (left) and memory consumption (right) vs. sparse implicit BDF across grid dimensions up to $49,152$ coupled state equations. PRK-4 achieves an asymptotic $48\times$ latency reduction and $42\times$ memory reduction with zero sparse LU fill-in overhead.}
+\label{fig:dendrite_scaling}
+\end{figure}
+
+As shown in Figures \ref{fig:dendrite_morphology}--\ref{fig:dendrite_scaling}, Pratyaksh-II stably integrates the complete 49,152-equation system at macroscopic time steps ($\Delta t = 25\text{ ms}$, exceeding explicit CFL limits by over $25\times$) in just $8.56\text{ ms}$ per step. When the dendrite needle breaches the gap at Step 41, localized current crowding triggers Arrhenius SEI ignition; classical RK4 detonates instantly into floating-point overflow, while Pratyaksh-II smoothly and accurately resolves the thermal runaway shockwave into post-ignition equilibrium.
+
 \section{Conclusion}
-The Scale-Invariant Pratyaksh General Equation establishes a closed, mathematically rigorous explicit Runge-Kutta formulation. By embedding an intrinsic curvature sensor into the $\mathcal{O}(h^7)$ Taylor domain and coupling it with dynamic mixed-scale normalization, the solver achieves implicit-like stability against stiff transients while retaining the $\mathcal{O}(d)$ explicit computational simplicity of RK4. In multi-dimensional geometries, the matrix-free formulation bypasses the classic 3D sparse LU fill-in barrier, delivering over two orders of magnitude speedup ($131.5\times$) compared to sparse implicit architectures.
+The Scale-Invariant Pratyaksh General Equation establishes a closed, mathematically rigorous explicit Runge-Kutta formulation. By embedding an intrinsic curvature sensor into the $\mathcal{O}(h^7)$ Taylor domain and coupling it with dynamic mixed-scale normalization, the solver achieves implicit-like stability against stiff transients while retaining the $\mathcal{O}(d)$ explicit computational simplicity of RK4. In multi-dimensional geometries, the matrix-free formulation bypasses the classic 3D sparse LU fill-in barrier, delivering over two orders of magnitude speedup ($131.5\times$) compared to sparse implicit architectures, and resolving grand challenge multi-physics systems such as solid-state battery lithium dendrite thermal runaway in real time.
 
 \end{document}

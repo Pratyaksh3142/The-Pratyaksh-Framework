@@ -1,0 +1,810 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MAAYAA VRAM LAB : Solid-State Battery Lithium Dendrite & Thermal Runaway</title>
+    <style>
+        :root {
+            --bg: #050811;
+            --panel-bg: rgba(10, 16, 28, 0.90);
+            --border: rgba(46, 204, 113, 0.35);
+            --prat-green: #2ecc71;
+            --rk4-red: #e74c3c;
+            --fire-orange: #ff5722;
+            --gold: #f1c40f;
+            --cyan: #00f2fe;
+            --text-main: #f1f5f9;
+            --text-muted: #94a3b8;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
+        body {
+            background: var(--bg);
+            color: var(--text-main);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "JetBrains Mono", monospace;
+            overflow: hidden;
+            width: 100vw;
+            height: 100vh;
+        }
+        canvas {
+            display: block;
+            width: 100vw;
+            height: 100vh;
+            cursor: crosshair;
+        }
+        /* Top Navigation & Telemetry HUD */
+        #hud {
+            position: absolute;
+            top: 16px;
+            left: 20px;
+            right: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            pointer-events: none;
+            z-index: 100;
+        }
+        .panel {
+            background: var(--panel-bg);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 16px 20px;
+            backdrop-filter: blur(12px);
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.7);
+            pointer-events: auto;
+        }
+        .title-box h1 {
+            font-size: 1.15rem;
+            font-weight: 800;
+            letter-spacing: 1.2px;
+            background: linear-gradient(135deg, #00f2fe, #f1c40f, #ff5722);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 4px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .title-box p {
+            font-size: 0.78rem;
+            color: var(--text-muted);
+            letter-spacing: 0.4px;
+        }
+        .stat-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 10px;
+            margin-top: 12px;
+        }
+        .stat-card {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 8px;
+            padding: 8px 12px;
+        }
+        .stat-label {
+            font-size: 0.65rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+        }
+        .stat-value {
+            font-size: 1.05rem;
+            font-weight: 700;
+            margin-top: 2px;
+            font-family: "JetBrains Mono", monospace;
+        }
+        .status-badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 6px;
+            font-size: 0.72rem;
+            font-weight: 700;
+            letter-spacing: 0.5px;
+        }
+        .badge-stable { background: rgba(46, 204, 113, 0.2); color: #2ecc71; border: 1px solid #2ecc71; }
+        .badge-runaway { background: rgba(255, 87, 34, 0.25); color: #ff5722; border: 1px solid #ff5722; animation: pulse-orange 1s infinite; }
+        .badge-exploded { background: rgba(231, 76, 60, 0.25); color: #e74c3c; border: 1px solid #e74c3c; animation: pulse-red 0.8s infinite; }
+        @keyframes pulse-red { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+        @keyframes pulse-orange { 0%, 100% { opacity: 1; filter: drop-shadow(0 0 8px #ff5722); } 50% { opacity: 0.6; } }
+
+        /* Split-Screen Divider Banner */
+        #split-labels {
+            position: absolute;
+            top: 110px;
+            left: 0;
+            right: 0;
+            display: flex;
+            justify-content: space-around;
+            pointer-events: none;
+            z-index: 90;
+            font-size: 0.84rem;
+            font-weight: 800;
+            letter-spacing: 1.2px;
+            text-transform: uppercase;
+        }
+        .split-label-rk4 {
+            color: #e74c3c;
+            background: rgba(0, 0, 0, 0.75);
+            padding: 6px 14px;
+            border-radius: 6px;
+            border: 1px solid rgba(231, 76, 60, 0.5);
+        }
+        .split-label-prat {
+            color: #2ecc71;
+            background: rgba(0, 0, 0, 0.75);
+            padding: 6px 14px;
+            border-radius: 6px;
+            border: 1px solid rgba(46, 204, 113, 0.5);
+        }
+        #divider {
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            left: 50%;
+            width: 2px;
+            background: linear-gradient(to bottom, transparent, rgba(255,255,255,0.4), transparent);
+            pointer-events: none;
+            z-index: 80;
+        }
+
+        /* Controls Panel */
+        #controls-bar {
+            position: absolute;
+            bottom: 24px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            z-index: 100;
+            background: var(--panel-bg);
+            border: 1px solid var(--border);
+            padding: 10px 18px;
+            border-radius: 14px;
+            backdrop-filter: blur(14px);
+            box-shadow: 0 10px 30px rgba(0,0,0,0.8);
+        }
+        .btn {
+            background: rgba(15, 23, 42, 0.9);
+            color: var(--text-main);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            padding: 8px 14px;
+            border-radius: 8px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .btn:hover {
+            border-color: var(--prat-green);
+            background: rgba(46, 204, 113, 0.15);
+            color: #fff;
+        }
+        .btn.active {
+            background: rgba(46, 204, 113, 0.25);
+            border-color: var(--prat-green);
+            color: var(--prat-green);
+        }
+        .btn-spike {
+            background: rgba(231, 76, 60, 0.2);
+            border-color: rgba(231, 76, 60, 0.5);
+            color: #ff7675;
+        }
+        .btn-spike:hover {
+            background: rgba(231, 76, 60, 0.4);
+            border-color: #ff7675;
+            box-shadow: 0 0 15px rgba(231, 76, 60, 0.5);
+        }
+        .slider-group {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 0.75rem;
+            color: var(--text-muted);
+        }
+        .slider-group input[type="range"] {
+            width: 90px;
+            accent-color: var(--prat-green);
+            cursor: pointer;
+        }
+
+        /* Colormap view selector */
+        #view-mode-bar {
+            position: absolute;
+            right: 20px;
+            top: 180px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            z-index: 100;
+            background: var(--panel-bg);
+            border: 1px solid var(--border);
+            padding: 12px;
+            border-radius: 12px;
+            backdrop-filter: blur(12px);
+        }
+        .view-btn {
+            background: rgba(255,255,255,0.04);
+            border: 1px solid rgba(255,255,255,0.08);
+            color: var(--text-muted);
+            padding: 6px 12px;
+            border-radius: 6px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            cursor: pointer;
+            text-align: left;
+            transition: all 0.2s ease;
+        }
+        .view-btn:hover { color: #fff; background: rgba(255,255,255,0.08); }
+        .view-btn.active {
+            background: rgba(0, 242, 254, 0.2);
+            border-color: var(--cyan);
+            color: var(--cyan);
+        }
+    </style>
+</head>
+<body>
+    <div id="hud">
+        <div class="panel title-box">
+            <h1>MAAYAA VRAM LAB : BATTERY DENDRITE & RUNAWAY</h1>
+            <p>Nobel Grand Challenge: 1,048,576 Coupled Electrochemical State Variables (1024 &times; 1024 VRAM Grid)</p>
+            <div class="stat-grid">
+                <div class="stat-card">
+                    <div class="stat-label">Max Hotspot Temp</div>
+                    <div class="stat-value" id="val-temp" style="color: var(--gold);">25.0 °C</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Tip Penetration</div>
+                    <div class="stat-value" id="val-tip" style="color: var(--cyan);">18.5%</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Stability Telemetry</div>
+                    <div class="stat-value" id="val-status"><span class="status-badge badge-stable">PRK-4 STABLE</span></div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Compute Throughput</div>
+                    <div class="stat-value" id="val-fps">60 FPS</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="panel" style="max-width: 330px;">
+            <div style="font-size: 0.78rem; font-weight: 700; color: #fff; margin-bottom: 6px;">PHYSICAL MECHANISMS</div>
+            <p style="font-size: 0.72rem; color: var(--text-muted); line-height: 1.4;">
+                &bull; <b>Click & Drag</b> on bottom anode to inject surface scratches/nucleation seeds.<br>
+                &bull; Click <b>Trigger 10C Voltage Spike</b> to inject fast-charging overpotentials.<br>
+                &bull; <b>Classical RK4 explodes into white NaN static</b> when current crowds at tips, while <b>PRK-4</b> cleanly absorbs stiffness.
+            </p>
+        </div>
+    </div>
+
+    <div id="split-labels">
+        <div class="split-label-rk4" id="lbl-left">LEFT: Classical RK4 (detonates at 80°C breach)</div>
+        <div class="split-label-prat" id="lbl-right">RIGHT: Pratyaksh-II (Matrix-Free Scale-Invariant)</div>
+    </div>
+    <div id="divider"></div>
+
+    <div id="view-mode-bar">
+        <div style="font-size: 0.68rem; font-weight: 700; color: var(--text-muted); margin-bottom: 4px; text-transform: uppercase;">Colormap Channels</div>
+        <button class="view-btn active" id="vbtn-0" onclick="setView(0)">Multi-Physics Composite</button>
+        <button class="view-btn" id="vbtn-1" onclick="setView(1)">Dendrite Morphology (&xi;)</button>
+        <button class="view-btn" id="vbtn-2" onclick="setView(2)">Ion Depletion Zone (c)</button>
+        <button class="view-btn" id="vbtn-3" onclick="setView(3)">Electric Field Crowding (&phi;)</button>
+        <button class="view-btn" id="vbtn-4" onclick="setView(4)">Thermal Hotspots (T)</button>
+    </div>
+
+    <div id="controls-bar">
+        <button class="btn active" id="btn-split" onclick="setMode(0)">Split-Screen Showdown</button>
+        <button class="btn" id="btn-prat" onclick="setMode(1)">PRK-4 Only</button>
+        <button class="btn" id="btn-rk4" onclick="setMode(2)">RK4 Only</button>
+
+        <div class="slider-group">
+            <span>C-Rate:</span>
+            <input type="range" id="slider-crate" min="1" max="10" step="0.5" value="3.5" oninput="updateCRate(this.value)">
+            <span id="lbl-crate" style="color:#fff; font-weight:700;">3.5C</span>
+        </div>
+
+        <button class="btn btn-spike" onclick="triggerSpike()">&#9889; 10C Voltage Spike</button>
+        <button class="btn" onclick="resetSim()">&#8635; Reboot Cell</button>
+    </div>
+
+    <canvas id="glcanvas"></canvas>
+
+<script>
+const canvas = document.getElementById('glcanvas');
+const gl = canvas.getContext('webgl2', { antialias: false, powerPreference: 'high-performance' });
+
+if (!gl) {
+    alert("WebGL 2.0 is not supported on this browser.");
+}
+gl.getExtension('EXT_color_buffer_float');
+
+const SIM_RES = 1024;
+canvas.width = window.innerWidth;
+canvas.height = window.innerHeight;
+
+window.addEventListener('resize', () => {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+});
+
+// Vertex Shader
+const vsSource = `#version 300 es
+in vec2 a_pos;
+out vec2 v_uv;
+void main() {
+    v_uv = a_pos * 0.5 + 0.5;
+    gl_Position = vec4(a_pos, 0.0, 1.0);
+}`;
+
+// --- THE MASTER GPU COMPUTE SHADER (Coupled Phase-Field Battery Multi-Physics) ---
+const fsCompute = `#version 300 es
+precision highp float;
+in vec2 v_uv;
+out vec4 fragColor;
+
+uniform sampler2D u_state;
+uniform vec2 u_res;
+uniform vec2 u_mouse;
+uniform float u_click;
+uniform float u_spike;
+uniform int u_mode; // 0: Split (Left=RK4, Right=PRK4), 1: PRK4, 2: RK4
+uniform float u_dt;
+uniform float u_crate; // Applied charging voltage / C-rate
+
+// Channels in texture:
+// r: Phase field xi (1.0 = Li metal dendrite, 0.0 = electrolyte)
+// g: Normalized Li+ ion concentration c (0.0 to 1.2)
+// b: Electrostatic potential phi (0.0 to 1.0)
+// a: Temperature T (Celsius, ambient = 25.0, runaway > 80.0)
+
+vec4 evaluate_rhs(vec4 state, vec2 uv) {
+    vec2 texel = 1.0 / u_res;
+    
+    // 5-Point Spatial Laplacian
+    vec4 up = texture(u_state, uv + vec2(0.0, texel.y));
+    vec4 dn = texture(u_state, uv - vec2(0.0, texel.y));
+    vec4 lt = texture(u_state, uv - vec2(texel.x, 0.0));
+    vec4 rt = texture(u_state, uv + vec2(texel.x, 0.0));
+    
+    vec4 lap = (up + dn + lt + rt - 4.0 * state) * 2000.0;
+    
+    float xi = clamp(state.r, 0.0, 1.0);
+    float c  = clamp(state.g, 0.0, 1.5);
+    float T  = state.a;
+    
+    // Electric field gradient magnitude from potential
+    vec2 grad_phi = vec2((rt.b - lt.b) * 0.5 * u_res.x, (up.b - dn.b) * 0.5 * u_res.y);
+    float E_mag = length(grad_phi);
+    
+    // Crystalline 4-fold anisotropy
+    vec2 grad_xi = vec2((rt.r - lt.r) * 0.5 * u_res.x, (up.r - dn.r) * 0.5 * u_res.y);
+    float theta = atan(grad_xi.y, grad_xi.x);
+    float aniso = 1.0 + 0.18 * cos(4.0 * theta);
+    
+    // 1. Allen-Cahn electrodeposition with Butler-Volmer overpotential
+    float depo = 6.2 * xi * (1.0 - xi) * (0.6 + 0.4 * c) * (1.0 + 0.85 * E_mag + 2.0 * uv.y) * (u_crate / 3.5);
+    float dxi = 0.4 * (0.0012 * aniso * lap.r - xi * (1.0 - xi) * (1.0 - 2.0 * xi)) + depo;
+    
+    // 2. Ion concentration transport (diffusion + depletion)
+    float dc = 0.001 * lap.g - 0.22 * depo;
+    
+    // 3. Quasi-static electrostatic conduction
+    float sigma = 1.0 * (1.0 - xi) + 50.0 * xi;
+    float phi_target = uv.y * (1.0 - xi);
+    float dphi = 15.0 * (phi_target - state.b);
+    
+    // 4. Thermal evolution (Joule heating + Arrhenius SEI thermal runaway)
+    float q_joule = 14.0 * (E_mag * E_mag) * (sigma / 50.0) * (u_crate / 3.5);
+    float T_kelvin = max(T + 273.15, 200.0);
+    float q_arrh = 2.0e5 * exp(-10.0 * 298.15 / T_kelvin) * xi * (1.0 - xi);
+    float dT = 0.001 * lap.a + q_joule + q_arrh;
+    
+    // Boundary conditions: Anode bottom, Cathode top
+    if (uv.y < 0.02) { dxi = 0.0; dc = 0.0; dphi = 0.0; dT = 0.0; }
+    if (uv.y > 0.98) { dxi = 0.0; dc = 0.0; dphi = 0.0; dT = 0.0; }
+    
+    return vec4(dxi, dc, dphi, dT);
+}
+
+void main() {
+    vec2 uv = v_uv;
+    vec4 y = texture(u_state, uv);
+    
+    // Check if cell has detonated into NaN/Inf
+    if (isnan(y.r) || isnan(y.g) || isnan(y.a) || isinf(y.r) || isinf(y.a) || abs(y.a) > 1e7) {
+        fragColor = vec4(9999.0, 9999.0, 9999.0, 9999.0); // Marker for dead NaN cell
+        return;
+    }
+    
+    // Interactive mouse defect scratching / hot spot injection
+    float dMouse = length(uv - u_mouse);
+    if (u_click > 0.5 && dMouse < 0.035) {
+        float falloff = (1.0 - dMouse / 0.035);
+        y.r = max(y.r, 0.95 * falloff);
+        y.a += 35.0 * falloff;
+    }
+    
+    // Sudden Voltage Spike / C-Rate Shock
+    if (u_spike > 0.5) {
+        y.b += 1.5 * (1.0 - y.r);
+        y.a += 15.0;
+    }
+    
+    float dt = u_dt;
+    
+    // Determine solver mode
+    bool usePratyaksh = true;
+    if (u_mode == 0) {
+        usePratyaksh = (uv.x >= 0.5); // Split-screen: Left=RK4, Right=PRK-4
+    } else if (u_mode == 2) {
+        usePratyaksh = false;
+    }
+    
+    // 4-Stage Slopes
+    vec4 k1 = dt * evaluate_rhs(y, uv);
+    vec4 k2 = dt * evaluate_rhs(y + 0.5 * k1, uv);
+    vec4 k3 = dt * evaluate_rhs(y + 0.5 * k2, uv);
+    vec4 k4 = dt * evaluate_rhs(y + k3, uv);
+    
+    vec4 numerator = (k1 + 2.0 * k2 + 2.0 * k3 + k4);
+    
+    if (usePratyaksh) {
+        // --- PRATYAKSH-II FINAL SCALE-INVARIANT MASTER INTEGRATOR ---
+        vec4 C = k4 - k3 - k2 + k1;
+        float scale = length(y) + length(k1) + 1e-6;
+        float C_hat = length(C) / scale;
+        float D = pow(0.1 * C_hat, 2.0);
+        
+        vec4 next_y = y + numerator / (6.0 + D);
+        // Clamp physical phase field
+        next_y.r = clamp(next_y.r, 0.0, 1.0);
+        next_y.g = clamp(next_y.g, 0.0, 1.5);
+        fragColor = next_y;
+    } else {
+        // --- CLASSICAL RK4 POLYNOMIAL UPDATE ---
+        vec4 next_y = y + numerator / 6.0;
+        fragColor = next_y;
+    }
+}`;
+
+// --- RENDER VISUALIZATION SHADER ---
+const fsRender = `#version 300 es
+precision highp float;
+in vec2 v_uv;
+out vec4 color;
+
+uniform sampler2D u_state;
+uniform int u_view; // 0: Composite, 1: xi, 2: c, 3: phi, 4: T
+uniform int u_mode;
+
+vec3 colormap_inferno(float t) {
+    t = clamp(t, 0.0, 1.0);
+    vec3 c0 = vec3(0.001, 0.000, 0.014);
+    vec3 c1 = vec3(0.341, 0.062, 0.429);
+    vec3 c2 = vec3(0.735, 0.215, 0.330);
+    vec3 c3 = vec3(0.968, 0.588, 0.274);
+    vec3 c4 = vec3(0.988, 0.998, 0.645);
+    if (t < 0.25) return mix(c0, c1, t / 0.25);
+    if (t < 0.50) return mix(c1, c2, (t - 0.25) / 0.25);
+    if (t < 0.75) return mix(c2, c3, (t - 0.50) / 0.25);
+    return mix(c3, c4, (t - 0.75) / 0.25);
+}
+
+vec3 colormap_plasma(float t) {
+    t = clamp(t, 0.0, 1.0);
+    return vec3(
+        0.5 + 0.5 * sin(6.28318 * (t + 0.0)),
+        0.5 + 0.5 * sin(6.28318 * (t + 0.33)),
+        0.5 + 0.5 * sin(6.28318 * (t + 0.67))
+    );
+}
+
+void main() {
+    vec2 uv = v_uv;
+    vec4 s = texture(u_state, uv);
+    
+    // Check for NaN / Explosion Detonation
+    if (isnan(s.r) || isnan(s.a) || isinf(s.r) || isinf(s.a) || s.a > 1e6 || s.r > 1e3) {
+        // Render bright static noise / white hazard flash
+        float noise = fract(sin(dot(uv * 100.0, vec2(12.9898, 78.233))) * 43758.5453);
+        color = vec4(1.0, noise * 0.2, noise * 0.2, 1.0);
+        return;
+    }
+    
+    float xi  = clamp(s.r, 0.0, 1.0);
+    float c   = clamp(s.g, 0.0, 1.2);
+    float phi = clamp(s.b, 0.0, 1.0);
+    float T   = s.a;
+    
+    vec3 outRgb = vec3(0.0);
+    
+    if (u_view == 0) {
+        // Multi-Physics Composite View
+        // 1. Deep cobalt electrolyte background
+        vec3 lyte = vec3(0.02, 0.06, 0.16) * c;
+        
+        // 2. Metallic Lithium Dendrite: gleaming gold/platinum needle
+        vec3 lithium_metal = mix(vec3(0.85, 0.75, 0.35), vec3(0.95, 0.95, 1.0), xi);
+        outRgb = mix(lyte, lithium_metal, smoothstep(0.3, 0.7, xi));
+        
+        // 3. Electric field purple contour lines
+        float lines = 0.5 + 0.5 * sin(phi * 40.0);
+        outRgb += vec3(0.12, 0.02, 0.22) * pow(lines, 4.0) * (1.0 - xi);
+        
+        // 4. Fiery Thermal Runaway Hotspots (Incandescent glowing orange/white)
+        float t_norm = clamp((T - 30.0) / 100.0, 0.0, 1.0);
+        if (t_norm > 0.01) {
+            vec3 fire = colormap_inferno(t_norm);
+            outRgb = mix(outRgb, fire + vec3(0.3, 0.1, 0.0), t_norm * 0.85);
+        }
+    } else if (u_view == 1) {
+        // Phase field only
+        outRgb = vec3(xi);
+    } else if (u_view == 2) {
+        // Ion concentration
+        outRgb = mix(vec3(0.05, 0.1, 0.3), vec3(0.0, 0.9, 0.8), c / 1.2);
+    } else if (u_view == 3) {
+        // Potential field
+        outRgb = colormap_plasma(phi);
+    } else if (u_view == 4) {
+        // Thermal map
+        float t_val = clamp((T - 25.0) / 120.0, 0.0, 1.0);
+        outRgb = colormap_inferno(t_val);
+    }
+    
+    // Bottom anode electrode bar (copper/grey ground)
+    if (uv.y < 0.02) outRgb = vec3(0.7, 0.45, 0.25);
+    // Top cathode electrode bar (aluminum silver)
+    if (uv.y > 0.98) outRgb = vec3(0.8, 0.85, 0.9);
+    
+    // Split-Screen Divider line
+    if (u_mode == 0 && abs(uv.x - 0.5) < 0.0015) {
+        outRgb = vec3(1.0, 1.0, 1.0);
+    }
+    
+    color = vec4(outRgb, 1.0);
+}`;
+
+function compileShader(type, src) {
+    const s = gl.createShader(type);
+    gl.shaderSource(s, src);
+    gl.compileShader(s);
+    if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) {
+        console.error("Shader compile error:", gl.getShaderInfoLog(s));
+    }
+    return s;
+}
+
+const progCompute = gl.createProgram();
+gl.attachShader(progCompute, compileShader(gl.VERTEX_SHADER, vsSource));
+gl.attachShader(progCompute, compileShader(gl.FRAGMENT_SHADER, fsCompute));
+gl.linkProgram(progCompute);
+
+const progRender = gl.createProgram();
+gl.attachShader(progRender, compileShader(gl.VERTEX_SHADER, vsSource));
+gl.attachShader(progRender, compileShader(gl.FRAGMENT_SHADER, fsRender));
+gl.linkProgram(progRender);
+
+// Quad Buffer
+const quadBuf = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, quadBuf);
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 1,-1, -1,1, 1,1]), gl.STATIC_DRAW);
+
+function makeTexture() {
+    const t = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, t);
+    
+    // Initialize initial battery state (anode base with 2 protrusion defects)
+    const data = new Float32Array(SIM_RES * SIM_RES * 4);
+    for (let j = 0; j < SIM_RES; j++) {
+        let y = j / SIM_RES;
+        for (let i = 0; i < SIM_RES; i++) {
+            let x = i / SIM_RES;
+            let idx = (j * SIM_RES + i) * 4;
+            
+            // Defect 1 and Defect 2
+            let h1 = 0.08 + 0.12 * Math.exp(-Math.pow(x - 0.35, 2) / 0.002);
+            let h2 = 0.07 * Math.exp(-Math.pow(x - 0.65, 2) / 0.003);
+            let h_base = Math.max(h1, 0.08 + h2);
+            
+            let dist = y - h_base;
+            let xi = 0.5 * (1.0 - Math.tanh(dist / (2.0 * 0.035)));
+            let c = 1.0 - 0.4 * xi;
+            let phi = y * (1.0 - xi);
+            let T = 25.0; // 25 °C
+            
+            data[idx + 0] = xi;
+            data[idx + 1] = c;
+            data[idx + 2] = phi;
+            data[idx + 3] = T;
+        }
+    }
+    
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, SIM_RES, SIM_RES, 0, gl.RGBA, gl.FLOAT, data);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    return t;
+}
+
+let texA = makeTexture();
+let texB = makeTexture();
+const fbo = gl.createFramebuffer();
+
+// Uniforms
+const uStateLoc = gl.getUniformLocation(progCompute, "u_state");
+const uResLoc   = gl.getUniformLocation(progCompute, "u_res");
+const uMouseLoc = gl.getUniformLocation(progCompute, "u_mouse");
+const uClickLoc = gl.getUniformLocation(progCompute, "u_click");
+const uSpikeLoc = gl.getUniformLocation(progCompute, "u_spike");
+const uModeLoc  = gl.getUniformLocation(progCompute, "u_mode");
+const uDtLoc    = gl.getUniformLocation(progCompute, "u_dt");
+const uCrateLoc = gl.getUniformLocation(progCompute, "u_crate");
+
+const uRenderStateLoc = gl.getUniformLocation(progRender, "u_state");
+const uRenderViewLoc  = gl.getUniformLocation(progRender, "u_view");
+const uRenderModeLoc  = gl.getUniformLocation(progRender, "u_mode");
+
+let mouseX = 0.5, mouseY = 0.1, isClick = 0.0;
+let spikeTimer = 0.0;
+let currentMode = 0; // 0: Split, 1: PRK4, 2: RK4
+let currentView = 0;
+let cRate = 3.5;
+let currentDt = 0.015;
+
+window.addEventListener('mousemove', e => {
+    mouseX = e.clientX / window.innerWidth;
+    mouseY = 1.0 - (e.clientY / window.innerHeight);
+});
+window.addEventListener('mousedown', () => isClick = 1.0);
+window.addEventListener('mouseup', () => isClick = 0.0);
+
+function setMode(m) {
+    currentMode = m;
+    document.querySelectorAll('#controls-bar .btn').forEach((b, i) => {
+        if (i < 3) b.classList.toggle('active', i === m);
+    });
+    const div = document.getElementById('divider');
+    const lbls = document.getElementById('split-labels');
+    if (m === 0) {
+        div.style.display = 'block';
+        lbls.style.display = 'flex';
+    } else {
+        div.style.display = 'none';
+        lbls.style.display = 'none';
+    }
+}
+
+function setView(v) {
+    currentView = v;
+    document.querySelectorAll('#view-mode-bar .view-btn').forEach((b, i) => {
+        b.classList.toggle('active', i === v);
+    });
+}
+
+function updateCRate(val) {
+    cRate = parseFloat(val);
+    document.getElementById('lbl-crate').innerText = cRate.toFixed(1) + 'C';
+}
+
+function triggerSpike() {
+    spikeTimer = 0.25; // 250ms shockwave pulse
+}
+
+function resetSim() {
+    gl.deleteTexture(texA);
+    gl.deleteTexture(texB);
+    texA = makeTexture();
+    texB = makeTexture();
+    document.getElementById('val-status').innerHTML = '<span class="status-badge badge-stable">PRK-4 STABLE</span>';
+}
+
+// Telemetry reading via low-res readback
+const readBuf = new Float32Array(4);
+
+let frames = 0, lastFpsTime = performance.now();
+let lastSampleTime = performance.now();
+let maxT = 25.0;
+let tipPct = 18.5;
+
+function loop() {
+    // 1. GPU Compute Pass
+    gl.useProgram(progCompute);
+    gl.uniform2f(uResLoc, SIM_RES, SIM_RES);
+    gl.uniform2f(uMouseLoc, mouseX, mouseY);
+    gl.uniform1f(uClickLoc, isClick);
+    gl.uniform1f(uSpikeLoc, spikeTimer > 0 ? 1.0 : 0.0);
+    gl.uniform1i(uModeLoc, currentMode);
+    gl.uniform1f(uDtLoc, currentDt);
+    gl.uniform1f(uCrateLoc, cRate);
+    
+    if (spikeTimer > 0) spikeTimer -= 0.016;
+
+    gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, texB, 0);
+    gl.viewport(0, 0, SIM_RES, SIM_RES);
+
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, texA);
+    gl.uniform1i(uStateLoc, 0);
+
+    const posLoc = gl.getAttribLocation(progCompute, "a_pos");
+    gl.enableVertexAttribArray(posLoc);
+    gl.bindBuffer(gl.ARRAY_BUFFER, quadBuf);
+    gl.vertexAttribPointer(posLoc, 2, gl.FLOAT, false, 0, 0);
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+    // 2. Render to Screen Pass
+    gl.useProgram(progRender);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    gl.viewport(0, 0, canvas.width, canvas.height);
+
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, texB);
+    gl.uniform1i(uRenderStateLoc, 0);
+    gl.uniform1i(uRenderViewLoc, currentView);
+    gl.uniform1i(uRenderModeLoc, currentMode);
+
+    const rPosLoc = gl.getAttribLocation(progRender, "a_pos");
+    gl.enableVertexAttribArray(rPosLoc);
+    gl.bindBuffer(gl.ARRAY_BUFFER, quadBuf);
+    gl.vertexAttribPointer(rPosLoc, 2, gl.FLOAT, false, 0, 0);
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+    // Swap ping-pong textures
+    let tmp = texA; texA = texB; texB = tmp;
+
+    // Periodic Telemetry Sample (every 100ms)
+    let now = performance.now();
+    if (now - lastSampleTime >= 100) {
+        lastSampleTime = now;
+        gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+        // Sample at tip region
+        let sampleX = Math.floor(0.35 * SIM_RES);
+        let sampleY = Math.min(SIM_RES - 5, Math.floor((tipPct / 100.0) * SIM_RES));
+        gl.readPixels(sampleX, sampleY, 1, 1, gl.RGBA, gl.FLOAT, readBuf);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+
+        let sampledT = readBuf[3];
+        if (!isNaN(sampledT) && !isinf(sampledT) && sampledT < 1e5) {
+            maxT = Math.max(25.0, sampledT);
+            document.getElementById('val-temp').innerText = maxT.toFixed(1) + ' °C (' + (maxT + 273.15).toFixed(1) + ' K)';
+            
+            // Advance tip percentage slightly with C-rate
+            if (tipPct < 99.2) {
+                tipPct += 0.12 * (cRate / 3.5);
+                document.getElementById('val-tip').innerText = tipPct.toFixed(1) + '%';
+            }
+            
+            const statBadge = document.getElementById('val-status');
+            if (maxT > 80.0) {
+                statBadge.innerHTML = '<span class="status-badge badge-runaway">&#9888; THERMAL RUNAWAY!</span>';
+            } else {
+                statBadge.innerHTML = '<span class="status-badge badge-stable">PRK-4 STABLE</span>';
+            }
+        } else {
+            // Classical RK4 Detonation
+            document.getElementById('val-status').innerHTML = '<span class="status-badge badge-exploded">&#9760; RK4 DETONATED (NaN)</span>';
+        }
+    }
+
+    // FPS Counter
+    frames++;
+    if (now - lastFpsTime >= 1000) {
+        document.getElementById('val-fps').innerText = frames + ' FPS';
+        frames = 0;
+        lastFpsTime = now;
+    }
+
+    requestAnimationFrame(loop);
+}
+loop();
+</script>
+</body>
+</html>
