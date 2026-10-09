@@ -195,14 +195,30 @@ float sdBoat(vec3 p){
   return min(mainHull, min(ws, min(seat, min(bench, min(engine, rail)))));
 }
 
+float sphIntersect(vec3 ro, vec3 rd, vec3 ce, float ra){
+  vec3 oc = ro - ce; float b = dot(oc, rd);
+  float c = dot(oc, oc) - ra * ra; float h = b * b - c;
+  if(h < 0.0) return -1.0;
+  float sh = sqrt(h);
+  float t0 = -b - sh; float t1 = -b + sh;
+  if(t1 < 0.0) return -1.0;
+  return t0 > 0.0 ? t0 : 0.0;
+}
+
 float traceBoat(vec3 ro, vec3 rd, float tmax){
-  float t=0.;
-  for(int i=0;i<70;i++){
-    vec3 p=ro+rd*t; vec3 bp=uBoatInvMat*(p-uBoatPos);
-    if(length(p-uBoatPos)>6.5 && length(bp)>5.5) { t+=length(p-uBoatPos)-5.0; continue; }
-    float d=sdBoat(bp); if(d<0.002*t) return t;
-    t+=d*0.75; if(t>tmax) return 1e9;
-  } return 1e9;
+  float tEntry = sphIntersect(ro, rd, uBoatPos, 4.2);
+  if(tEntry < 0.0 || tEntry > tmax) return 1e9;
+  float t = tEntry;
+  float tExit = min(tmax, tEntry + 8.5);
+  for(int i=0; i<45; i++){
+    vec3 p = ro + rd * t;
+    vec3 bp = uBoatInvMat * (p - uBoatPos);
+    float d = sdBoat(bp);
+    if(d < 0.002 * t) return t;
+    t += d * 0.85;
+    if(t > tExit) return 1e9;
+  }
+  return 1e9;
 }
 
 vec3 boatNormal(vec3 p){
@@ -575,6 +591,7 @@ function seaMap(px, pz, it, t) {
 let spawnX = -18.0, spawnZ = -662.0;
 const player = { pos:[spawnX, terrainH(spawnX,spawnZ,6)+1.6, spawnZ], vel:[0,0,0], onGround:true, state:'walk' };
 let boatSpawnX = -18.0, boatSpawnZ = -655.0;
+let boatSpawnY = seaMap(boatSpawnX, boatSpawnZ, 4, 0);
 const boat = { 
     pos:[boatSpawnX, boatSpawnY, boatSpawnZ], 
     vel:[0,0,0], 
@@ -918,27 +935,24 @@ function loop(now){
       let landH = terrainH(px, pz, 6);
       let surfaceH = Math.max(waterH, landH);
       if (shockWavePulse > 0.001) {
-          surfaceH += Math.sin(simTime * 9.0) * shockWavePulse * 1.6;
+          surfaceH += Math.sin(simTime * 8.0) * shockWavePulse * 1.5;
       }
       
       let depth = surfaceH - py;
       let spdXZ = Math.hypot(vx, vz);
 
-      let ax = 0, ay = -9.81, az = 0;
+      // Smooth Archimedean immersion fraction [-0.3m to +0.3m around waterline]
+      let submerge = Math.max(0.0, Math.min(1.0, (depth + 0.3) / 0.6));
 
-      if (depth > 0) {
-          let fBuoy = waveStiffness * depth;
-          let fDamp = (8.0 + 2.5 * Math.abs(vy)) * vy;
-          ay = -9.81 + fBuoy - fDamp;
+      // Hydrodynamic buoyancy & linear slamming damping (Lipschitz continuous)
+      let fBuoy = 14.0 * submerge + waveStiffness * Math.max(0.0, depth) * submerge;
+      let fDamp = (12.0 * submerge + 0.1) * vy;
+      let ay = -9.81 + fBuoy - fDamp;
 
-          let dragXZ = 1.8 + 0.3 * spdXZ;
-          ax = thrust_x - dragXZ * vx;
-          az = thrust_z - dragXZ * vz;
-      } else {
-          ay = -16.0 - 0.05 * vy;
-          ax = thrust_x * 0.2 - 0.08 * vx;
-          az = thrust_z * 0.2 - 0.08 * vz;
-      }
+      // Water drag
+      let dragXZ = (1.5 * submerge + 0.05) + 0.22 * spdXZ * submerge;
+      let ax = thrust_x - dragXZ * vx;
+      let az = thrust_z - dragXZ * vz;
 
       return [vx, vy, vz, ax, ay, az];
   };
@@ -949,7 +963,7 @@ function loop(now){
 
       let bExploded = false;
       for (let i = 0; i < 6; i++) {
-          if (isNaN(new_b[i]) || !isFinite(new_b[i]) || Math.abs(new_b[i]) > 20000.0) {
+          if (isNaN(new_b[i]) || !isFinite(new_b[i]) || Math.abs(new_b[i]) > 2000.0) {
               bExploded = true;
               break;
           }
@@ -963,8 +977,19 @@ function loop(now){
           boat.vel = [NaN, NaN, NaN];
           if (player.state === 'boat') { player.state = 'walk'; player.vel = [0, 0, 0]; }
       } else {
-          boat.pos = [new_b[0], new_b[1], new_b[2]];
-          boat.vel = [new_b[3], new_b[4], new_b[5]];
+          let waterH = seaMap(new_b[0], new_b[2], 4, simTime);
+          let landH = terrainH(new_b[0], new_b[2], 6);
+          let surfaceH = Math.max(waterH, landH);
+
+          // Prevent boat from falling through water or terrain
+          let clampedY = Math.max(surfaceH - 0.75, new_b[1]);
+          let clampedVy = Math.max(-20.0, Math.min(25.0, new_b[4]));
+          if (new_b[1] < surfaceH - 0.75) {
+              clampedVy = Math.max(0.0, clampedVy);
+          }
+
+          boat.pos = [new_b[0], clampedY, new_b[2]];
+          boat.vel = [new_b[3], clampedVy, new_b[5]];
       }
   }
 
@@ -1052,10 +1077,19 @@ function loop(now){
   gl.uniform1f(s.u.uFocal,1/Math.tan(S.fov*Math.PI/360)); gl.uniform1f(s.u.uSunI,20);
   gl.uniform2fv(s.u.uWind,wind_vec); gl.uniform1i(s.u.uFrame,frame);
   
-  gl.uniform3fv(s.u.uBoatPos, boat.pos);
+  let safeBoatPos = [
+      isNaN(boat.pos[0]) ? boatSpawnX : boat.pos[0],
+      isNaN(boat.pos[1]) ? boatSpawnY : boat.pos[1],
+      isNaN(boat.pos[2]) ? boatSpawnZ : boat.pos[2]
+  ];
+  gl.uniform3fv(s.u.uBoatPos, safeBoatPos);
   gl.uniformMatrix3fv(s.u.uBoatMat, false, boat.mat);
   gl.uniformMatrix3fv(s.u.uBoatInvMat, false, boat.invMat);
-  gl.uniform2f(s.u.uBoatVel, boat.vel[0], boat.vel[2]);
+  let safeBoatVel = [
+      isNaN(boat.vel[0]) ? 0 : boat.vel[0],
+      isNaN(boat.vel[2]) ? 0 : boat.vel[2]
+  ];
+  gl.uniform2f(s.u.uBoatVel, safeBoatVel[0], safeBoatVel[1]);
   
   draw(hdr); gl.bindTexture(gl.TEXTURE_2D,hdr.tex); gl.generateMipmap(gl.TEXTURE_2D);
 
