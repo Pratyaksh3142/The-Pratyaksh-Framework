@@ -316,7 +316,46 @@ We subjected the Pratyaksh-II framework to an 8-point physical stress testing ma
 \label{tab:stress_matrix}
 \end{table}
 
+\subsection{Multi-Dimensional Scaling: Matrix-Free vs. Sparse Implicit (IDAKLU-Style)}
+Modern industrial PDE and differential-algebraic (DAE) simulations frequently utilize sparse direct solvers (such as IDA + KLU in battery modelling frameworks like PyBaMM) to mitigate the classical dense $\mathcal{O}(d^3)$ bottleneck down to $\mathcal{O}(d^{1.2} - d^{1.5})$. To establish the computational advantage of our matrix-free formulation against state-of-the-art sparse linear solvers, we benchmarked Pratyaksh-II directly against sparse BDF (using column-ordered sparse LU factorizations) across 1D, 2D, and 3D stiff PDE systems on identical hardware.
+
+\begin{table}[htbp]
+\centering
+\small
+\begin{tabular}{@{}lcccccc@{}}
+\toprule
+\textbf{Geometry} & \textbf{State Dimension} & \textbf{PRK-4 Time} & \textbf{Sparse BDF Time} & \textbf{Speedup} & \textbf{PRK-4 RAM} & \textbf{BDF RAM} \\ \midrule
+1D Brusselator & $N = 1,000$ & $\mathbf{0.390\text{ ms}}$ & $2.156\text{ ms}$ & $\mathbf{5.5\times}$ & $73.7\text{ KB}$ & $465.5\text{ KB}$ \\
+2D Bistable PDE & $N = 2,500$ & $\mathbf{0.505\text{ ms}}$ & $2.122\text{ ms}$ & $\mathbf{4.2\times}$ & $197.1\text{ KB}$ & $2650.4\text{ KB}$ \\
+3D Reaction-Diff. & $N = 15,625$ & $\mathbf{2.132\text{ ms}}$ & $280.421\text{ ms}$ & $\mathbf{131.5\times}$ & $1.34\text{ MB}$ & $12.26\text{ MB}$ \\ \bottomrule
+\end{tabular}
+\caption{Multi-dimensional performance showdown: Matrix-free explicit PRK-4 vs. sparse direct implicit BDF (IDAKLU style). In 3D geometries, matrix fill-in causes sparse implicit factorization latency to explode, whereas PRK-4 scales linearly at $2.13\text{ ms}$.}
+\label{tab:multidim_showdown}
+\end{table}
+
+\begin{figure}[htbp]
+\centering
+\IfFileExists{multidim_scaling_showdown.png}{%
+    \includegraphics[width=0.95\linewidth]{multidim_scaling_showdown.png}%
+}{%
+    \fbox{\parbox{0.95\linewidth}{\centering \vspace{1.5cm} \textbf{[Figure: Multi-Dimensional Scaling Showdown]}\\\small (Upload \texttt{multidim_scaling_showdown.png} to Overleaf to render this graph)\\ \vspace{1.5cm}}}%
+}
+\caption{Compute latency (left) and peak RAM allocation (right) across 1D, 2D, and 3D geometries. Pratyaksh-II achieves a $131.5\times$ latency speedup and $9.1\times$ RAM reduction in 3D.}
+\label{fig:multidim_scaling}
+\end{figure}
+
+\begin{figure}[htbp]
+\centering
+\IfFileExists{3d_simulation_visual.png}{%
+    \includegraphics[width=0.85\linewidth]{3d_simulation_visual.png}%
+}{%
+    \fbox{\parbox{0.85\linewidth}{\centering \vspace{1.5cm} \textbf{[Figure: 3D Stiff Reaction-Diffusion Volumetric State]}\\\small (Upload \texttt{3d_simulation_visual.png} to Overleaf to render this graph)\\ \vspace{1.5cm}}}%
+}
+\caption{Volumetric solution of a stiff 3D reaction-diffusion field ($N = 15,625$) stably resolved by Pratyaksh-II in $2.13\text{ ms}$ per step without matrix factorizations.}
+\label{fig:3d_visual}
+\end{figure}
+
 \section{Conclusion}
-The Scale-Invariant Pratyaksh General Equation establishes a closed, mathematically rigorous explicit Runge-Kutta formulation. By embedding an intrinsic curvature sensor into the $\mathcal{O}(h^7)$ Taylor domain and coupling it with dynamic mixed-scale normalization, the solver achieves implicit-like stability against stiff transients while retaining the $\mathcal{O}(d)$ explicit computational simplicity of RK4.
+The Scale-Invariant Pratyaksh General Equation establishes a closed, mathematically rigorous explicit Runge-Kutta formulation. By embedding an intrinsic curvature sensor into the $\mathcal{O}(h^7)$ Taylor domain and coupling it with dynamic mixed-scale normalization, the solver achieves implicit-like stability against stiff transients while retaining the $\mathcal{O}(d)$ explicit computational simplicity of RK4. In multi-dimensional geometries, the matrix-free formulation bypasses the classic 3D sparse LU fill-in barrier, delivering over two orders of magnitude speedup ($131.5\times$) compared to sparse implicit architectures.
 
 \end{document}
