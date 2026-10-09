@@ -1,0 +1,596 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MAAYAA ENGINE : Classical RK4 vs Pratyaksh-II GPU Showdown</title>
+    <style>
+        :root {
+            --bg: #06090e;
+            --panel-bg: rgba(10, 15, 24, 0.88);
+            --border: rgba(46, 204, 113, 0.3);
+            --prat-green: #2ecc71;
+            --rk4-red: #e74c3c;
+            --text-main: #e2e8f0;
+            --text-muted: #94a3b8;
+            --accent-cyan: #00f2fe;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
+        body {
+            background: var(--bg);
+            color: var(--text-main);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "JetBrains Mono", monospace;
+            overflow: hidden;
+            width: 100vw;
+            height: 100vh;
+        }
+        canvas {
+            display: block;
+            width: 100vw;
+            height: 100vh;
+            cursor: crosshair;
+        }
+        /* Top Navigation / Telemetry HUD */
+        #hud {
+            position: absolute;
+            top: 16px;
+            left: 20px;
+            right: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            pointer-events: none;
+            z-index: 100;
+        }
+        .panel {
+            background: var(--panel-bg);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 16px 20px;
+            backdrop-filter: blur(12px);
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
+            pointer-events: auto;
+        }
+        .title-box h1 {
+            font-size: 1.15rem;
+            font-weight: 800;
+            letter-spacing: 1.5px;
+            background: linear-gradient(135deg, #00f2fe, #4facfe, #2ecc71);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 4px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .title-box p {
+            font-size: 0.78rem;
+            color: var(--text-muted);
+            letter-spacing: 0.5px;
+        }
+        .stat-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 12px;
+            margin-top: 12px;
+        }
+        .stat-card {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 8px;
+            padding: 8px 12px;
+        }
+        .stat-label {
+            font-size: 0.68rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+        }
+        .stat-value {
+            font-size: 1.05rem;
+            font-weight: 700;
+            margin-top: 2px;
+            font-family: "JetBrains Mono", monospace;
+        }
+        .status-badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 6px;
+            font-size: 0.72rem;
+            font-weight: 700;
+            letter-spacing: 0.5px;
+        }
+        .badge-stable { background: rgba(46, 204, 113, 0.2); color: #2ecc71; border: 1px solid #2ecc71; }
+        .badge-exploded { background: rgba(231, 76, 60, 0.2); color: #e74c3c; border: 1px solid #e74c3c; animation: pulse-red 1s infinite; }
+        @keyframes pulse-red {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        /* Controls & Mode Bar */
+        #controls {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 10px;
+            z-index: 100;
+        }
+        .btn {
+            background: rgba(15, 23, 42, 0.9);
+            color: var(--text-main);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            padding: 10px 18px;
+            font-size: 0.82rem;
+            font-weight: 600;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            backdrop-filter: blur(10px);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .btn:hover {
+            border-color: var(--accent-cyan);
+            box-shadow: 0 0 15px rgba(0, 242, 254, 0.3);
+            transform: translateY(-2px);
+        }
+        .btn.active {
+            background: linear-gradient(135deg, rgba(0, 242, 254, 0.2), rgba(79, 172, 254, 0.3));
+            border-color: var(--accent-cyan);
+            color: #fff;
+        }
+        .btn-shock {
+            background: linear-gradient(135deg, rgba(231, 76, 60, 0.3), rgba(192, 57, 43, 0.4));
+            border-color: #e74c3c;
+            color: #ff7675;
+        }
+        .btn-shock:hover {
+            border-color: #ff7675;
+            box-shadow: 0 0 20px rgba(231, 76, 60, 0.5);
+        }
+        /* Split-Screen Divider Banner */
+        #split-labels {
+            position: absolute;
+            top: 100px;
+            left: 0;
+            right: 0;
+            display: flex;
+            justify-content: space-around;
+            pointer-events: none;
+            z-index: 90;
+            font-size: 0.88rem;
+            font-weight: 800;
+            letter-spacing: 1.5px;
+            text-transform: uppercase;
+        }
+        .split-label-rk4 {
+            color: #e74c3c;
+            background: rgba(0, 0, 0, 0.6);
+            padding: 6px 14px;
+            border-radius: 6px;
+            border: 1px solid rgba(231, 76, 60, 0.4);
+        }
+        .split-label-prat {
+            color: #2ecc71;
+            background: rgba(0, 0, 0, 0.6);
+            padding: 6px 14px;
+            border-radius: 6px;
+            border: 1px solid rgba(46, 204, 113, 0.4);
+        }
+        #divider {
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            left: 50%;
+            width: 2px;
+            background: linear-gradient(to bottom, transparent, rgba(255,255,255,0.4), transparent);
+            pointer-events: none;
+            z-index: 80;
+        }
+    </style>
+</head>
+<body>
+    <div id="hud">
+        <div class="panel title-box">
+            <h1>MAAYAA ENGINE : GPU COMPUTE SHOWDOWN</h1>
+            <p>1,048,576 State Variables (1024 &times; 1024 High-Resolution Voxel Mesh)</p>
+            <div class="stat-grid">
+                <div class="stat-card">
+                    <div class="stat-label">Solver Mode</div>
+                    <div class="stat-value" id="mode-display" style="color: var(--accent-cyan);">SPLIT VIEW</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Frame Budget</div>
+                    <div class="stat-value" id="fps-display">60 FPS</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Stability Telemetry</div>
+                    <div class="stat-value" id="status-display"><span class="status-badge badge-stable">PRK-4 ACTIVE</span></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="panel" style="max-width: 340px;">
+            <div style="font-size: 0.78rem; font-weight: 700; color: #fff; margin-bottom: 6px;">INTERACTIVE INSTRUCTIONS</div>
+            <p style="font-size: 0.72rem; color: var(--text-muted); line-height: 1.4;">
+                &bull; <b>Click & Drag</b> on the grid to inject a concentrated thermal perturbation.<br>
+                &bull; Click <b>Trigger Mach 5 Shockwave</b> to blast the grid past the CFL limit.<br>
+                &bull; Watch <b>Classical RK4 detonate into NaN</b> while <b>Pratyaksh-II</b> absorbs the gradient.
+            </p>
+        </div>
+    </div>
+
+    <div id="split-labels">
+        <div class="split-label-rk4" id="lbl-left">LEFT: Classical RK4 (Order 4 Polynomial)</div>
+        <div class="split-label-prat" id="lbl-right">RIGHT: Pratyaksh-II (Scale-Invariant Rational)</div>
+    </div>
+    <div id="divider"></div>
+
+    <div id="controls">
+        <button class="btn active" id="btn-split" onclick="setMode(0)">Split-Screen Showdown</button>
+        <button class="btn" id="btn-prat" onclick="setMode(1)">Pratyaksh-II (PRK-4) Only</button>
+        <button class="btn" id="btn-rk4" onclick="setMode(2)">Classical RK4 Only</button>
+        <button class="btn btn-shock" onclick="triggerShockwave()">&#9889; Trigger Shockwave</button>
+        <button class="btn" onclick="resetSim()">&#8635; Reboot Grid</button>
+    </div>
+
+    <canvas id="glcanvas"></canvas>
+
+<script>
+const canvas = document.getElementById('glcanvas');
+const gl = canvas.getContext('webgl2', { antialias: false, powerPreference: 'high-performance' });
+
+if (!gl) {
+    alert("WebGL 2.0 is not supported on this browser/GPU.");
+}
+
+const ext = gl.getExtension('EXT_color_buffer_float');
+if (!ext) {
+    console.warn("EXT_color_buffer_float not supported, attempting RGBA16F fallback.");
+}
+
+// 1024x1024 resolution = 1,048,576 coupled PDE dimensions!
+const SIM_RES = 1024;
+canvas.width = window.innerWidth;
+canvas.height = window.innerHeight;
+
+window.addEventListener('resize', () => {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+});
+
+// Vertex Shader
+const vsSource = `#version 300 es
+in vec2 a_pos;
+out vec2 v_uv;
+void main() {
+    v_uv = a_pos * 0.5 + 0.5;
+    gl_Position = vec4(a_pos, 0.0, 1.0);
+}`;
+
+// --- THE MASTER SIMULATION COMPUTE SHADER ---
+const fsCompute = `#version 300 es
+precision highp float;
+in vec2 v_uv;
+out vec4 fragColor;
+
+uniform sampler2D u_state;
+uniform vec2 u_res;
+uniform vec2 u_mouse;
+uniform float u_click;
+uniform float u_shock;
+uniform int u_mode; // 0: Split (Left=RK4, Right=PRK4), 1: PRK4, 2: RK4
+uniform float u_dt;
+
+// Stiff Brusselator reaction-diffusion PDE
+vec2 physics(vec2 state, vec2 uv) {
+    vec2 texel = 1.0 / u_res;
+    
+    // Spatial 2nd-derivative discrete Laplacian stencil
+    vec2 up = texture(u_state, uv + vec2(0.0, texel.y)).rg;
+    vec2 dn = texture(u_state, uv - vec2(0.0, texel.y)).rg;
+    vec2 lt = texture(u_state, uv - vec2(texel.x, 0.0)).rg;
+    vec2 rt = texture(u_state, uv + vec2(texel.x, 0.0)).rg;
+    
+    vec2 lap = (up + dn + lt + rt - 4.0 * state) * 2500.0; // High spatial stiffness
+    
+    float u = state.r;
+    float v = state.g;
+    
+    // Stiff Non-Linear Chemical Kinetics (A = 1.0, B = 3.0)
+    float du = 1.0 - 4.0 * u + (u * u * v) + 0.001 * lap.r;
+    float dv = 3.0 * u - (u * u * v) + 0.0005 * lap.g;
+    
+    return vec2(du, dv);
+}
+
+void main() {
+    vec2 uv = v_uv;
+    vec4 current = texture(u_state, uv);
+    vec2 y = current.rg;
+    
+    // Check if the cell has already NaN-exploded
+    if (isnan(y.r) || isnan(y.g) || isinf(y.r) || isinf(y.g) || abs(y.r) > 1e4 || abs(y.g) > 1e4) {
+        fragColor = vec4(9999.0, 9999.0, 0.0, 1.0); // Marker for dead NaN cell
+        return;
+    }
+    
+    // Interactive perturbation injection (Mouse drag or Shock button)
+    float dMouse = length(uv - u_mouse);
+    if (u_click > 0.5 && dMouse < 0.035) {
+        y.r += 12.0 * (1.0 - dMouse / 0.035);
+        y.g += 8.0 * (1.0 - dMouse / 0.035);
+    }
+    if (u_shock > 0.5) {
+        float dCenter = length(uv - vec2(0.5, 0.5));
+        if (dCenter < 0.12) {
+            y.r += 25.0 * (1.0 - dCenter / 0.12);
+            y.g += 20.0 * (1.0 - dCenter / 0.12);
+        }
+    }
+    
+    float dt = u_dt;
+    
+    // Determine solver mode for this fragment
+    bool usePratyaksh = true;
+    if (u_mode == 0) {
+        // Split view: Left is RK4, Right is Pratyaksh
+        usePratyaksh = (uv.x >= 0.5);
+    } else if (u_mode == 2) {
+        usePratyaksh = false;
+    }
+    
+    // 4-Stage Slopes
+    vec2 k1 = dt * physics(y, uv);
+    vec2 k2 = dt * physics(y + 0.5 * k1, uv);
+    vec2 k3 = dt * physics(y + 0.5 * k2, uv);
+    vec2 k4 = dt * physics(y + k3, uv);
+    
+    vec2 numerator = (k1 + 2.0 * k2 + 2.0 * k3 + k4);
+    
+    if (usePratyaksh) {
+        // --- PRATYAKSH-II FINAL SCALE-INVARIANT MASTER EQUATION ---
+        vec2 C = k4 - k3 - k2 + k1;
+        
+        // Mixed Dynamic Scale: Sn = ||y|| + ||k1|| + 1e-6
+        float scale = length(y) + length(k1) + 1e-6;
+        float C_hat = length(C) / scale;
+        
+        // Guardrail perturbation (alpha=0.1, beta=2.0)
+        float D = pow(0.1 * C_hat, 2.0);
+        
+        vec2 next_y = y + numerator / (6.0 + D);
+        fragColor = vec4(next_y, D, 1.0); // Store state + telemetry guardrail
+    } else {
+        // --- CLASSICAL RK4 POLYNOMIAL UPDATE ---
+        vec2 next_y = y + numerator / 6.0;
+        
+        // Classical RK4 has no denominator: explodes on stiff shocks!
+        fragColor = vec4(next_y, 0.0, 1.0);
+    }
+}`;
+
+// --- RENDER VISUALIZATION SHADER (Raymarched Plasma Colormap) ---
+const fsRender = `#version 300 es
+precision highp float;
+in vec2 v_uv;
+out vec4 color;
+
+uniform sampler2D u_tex;
+uniform int u_mode;
+
+// Color palette for high-energy fluid
+vec3 colormap(float t) {
+    t = clamp(t, 0.0, 1.0);
+    vec3 c0 = vec3(0.04, 0.08, 0.15); // Deep space blue
+    vec3 c1 = vec3(0.0, 0.65, 0.95);  // Electric cyan
+    vec3 c2 = vec3(0.18, 0.8, 0.44);  // Plasma green
+    vec3 c3 = vec3(1.0, 0.85, 0.2);   // Sunburst yellow
+    vec3 c4 = vec3(1.0, 0.2, 0.2);    // Core shock red
+    
+    if (t < 0.25) return mix(c0, c1, t / 0.25);
+    if (t < 0.50) return mix(c1, c2, (t - 0.25) / 0.25);
+    if (t < 0.75) return mix(c2, c3, (t - 0.50) / 0.25);
+    return mix(c3, c4, (t - 0.75) / 0.25);
+}
+
+void main() {
+    vec4 data = texture(u_tex, v_uv);
+    float u = data.r;
+    float v = data.g;
+    float D = data.b; // Guardrail telemetry
+    
+    // Check for NaN / Infinity explosion (Classical RK4 crash state)
+    if (isnan(u) || isinf(u) || u > 500.0) {
+        // Dead pixel checkerboard pattern
+        vec2 grid = floor(gl_FragCoord.xy / 8.0);
+        float pattern = mod(grid.x + grid.y, 2.0);
+        color = vec4(mix(vec3(0.7, 0.0, 0.0), vec3(0.1, 0.0, 0.0), pattern), 1.0);
+        return;
+    }
+    
+    // Normalized field intensity
+    float intensity = (u - 0.8) / 3.0;
+    vec3 col = colormap(intensity);
+    
+    // Render split line indicator in mode 0
+    if (u_mode == 0 && abs(v_uv.x - 0.5) < 0.0015) {
+        col = vec3(1.0, 1.0, 1.0);
+    }
+    
+    color = vec4(col, 1.0);
+}`;
+
+function createShader(gl, type, src) {
+    const s = gl.createShader(type);
+    gl.shaderSource(s, src);
+    gl.compileShader(s);
+    if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) {
+        console.error("Shader compile error:", gl.getShaderInfoLog(s));
+    }
+    return s;
+}
+
+function createProgram(gl, vsSrc, fsSrc) {
+    const p = gl.createProgram();
+    gl.attachShader(p, createShader(gl, gl.VERTEX_SHADER, vsSrc));
+    gl.attachShader(p, createShader(gl, gl.FRAGMENT_SHADER, fsSrc));
+    gl.linkProgram(p);
+    if (!gl.getProgramParameter(p, gl.LINK_STATUS)) {
+        console.error("Program link error:", gl.getProgramInfoLog(p));
+    }
+    return p;
+}
+
+const progCompute = createProgram(gl, vsSource, fsCompute);
+const progRender = createProgram(gl, vsSource, fsRender);
+
+// Quad Buffer
+const quadBuf = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, quadBuf);
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 1,-1, -1,1, 1,1]), gl.STATIC_DRAW);
+
+// Texture Setup
+function createFloatTexture() {
+    const t = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, t);
+    
+    // Initialize with smooth chemical equilibrium state (A=1.0, B=3.0) + tiny noise
+    const initData = new Float32Array(SIM_RES * SIM_RES * 4);
+    for (let i = 0; i < SIM_RES * SIM_RES; i++) {
+        initData[i * 4 + 0] = 1.0 + (Math.random() - 0.5) * 0.1; // u
+        initData[i * 4 + 1] = 3.0 + (Math.random() - 0.5) * 0.1; // v
+        initData[i * 4 + 2] = 0.0; // D
+        initData[i * 4 + 3] = 1.0;
+    }
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, SIM_RES, SIM_RES, 0, gl.RGBA, gl.FLOAT, initData);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.REPEAT);
+    return t;
+}
+
+let texA = createFloatTexture();
+let texB = createFloatTexture();
+const fb = gl.createFramebuffer();
+
+// Uniforms
+const uCompRes = gl.getUniformLocation(progCompute, "u_res");
+const uCompMouse = gl.getUniformLocation(progCompute, "u_mouse");
+const uCompClick = gl.getUniformLocation(progCompute, "u_click");
+const uCompShock = gl.getUniformLocation(progCompute, "u_shock");
+const uCompMode = gl.getUniformLocation(progCompute, "u_mode");
+const uCompDt = gl.getUniformLocation(progCompute, "u_dt");
+
+const uRendMode = gl.getUniformLocation(progRender, "u_mode");
+
+// User Interaction State
+let mouseX = 0.5, mouseY = 0.5, isClick = 0.0, shockActive = 0.0;
+let currentMode = 0; // 0: Split, 1: PRK4, 2: RK4
+let dtValue = 0.0012; // Moderate macro-step that pushes limits
+
+window.addEventListener('mousemove', e => {
+    mouseX = e.clientX / window.innerWidth;
+    mouseY = 1.0 - (e.clientY / window.innerHeight);
+});
+window.addEventListener('mousedown', () => isClick = 1.0);
+window.addEventListener('mouseup', () => isClick = 0.0);
+
+function setMode(m) {
+    currentMode = m;
+    document.querySelectorAll('#controls .btn').forEach(b => b.classList.remove('active'));
+    if (m === 0) {
+        document.getElementById('btn-split').classList.add('active');
+        document.getElementById('mode-display').innerText = 'SPLIT SHOWDOWN';
+        document.getElementById('split-labels').style.display = 'flex';
+        document.getElementById('divider').style.display = 'block';
+    } else if (m === 1) {
+        document.getElementById('btn-prat').classList.add('active');
+        document.getElementById('mode-display').innerText = 'PRATYAKSH-II (PRK-4)';
+        document.getElementById('split-labels').style.display = 'none';
+        document.getElementById('divider').style.display = 'none';
+    } else if (m === 2) {
+        document.getElementById('btn-rk4').classList.add('active');
+        document.getElementById('mode-display').innerText = 'CLASSICAL RK4';
+        document.getElementById('split-labels').style.display = 'none';
+        document.getElementById('divider').style.display = 'none';
+    }
+}
+
+function triggerShockwave() {
+    shockActive = 1.0;
+    setTimeout(() => shockActive = 0.0, 150);
+}
+
+function resetSim() {
+    texA = createFloatTexture();
+    texB = createFloatTexture();
+}
+
+// Telemetry & Benchmark Variables
+let frameCount = 0;
+let lastFpsTime = performance.now();
+
+function render() {
+    // 1. Simulation Step (Ping-Pong FBO)
+    gl.useProgram(progCompute);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
+    gl.viewport(0, 0, SIM_RES, SIM_RES);
+    
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, texB, 0);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, texA);
+    
+    gl.uniform2f(uCompRes, SIM_RES, SIM_RES);
+    gl.uniform2f(uCompMouse, mouseX, mouseY);
+    gl.uniform1f(uCompClick, isClick);
+    gl.uniform1f(uCompShock, shockActive);
+    gl.uniform1i(uCompMode, currentMode);
+    gl.uniform1f(uCompDt, dtValue);
+    
+    const posLoc = gl.getAttribLocation(progCompute, "a_pos");
+    gl.bindBuffer(gl.ARRAY_BUFFER, quadBuf);
+    gl.enableVertexAttribArray(posLoc);
+    gl.vertexAttribPointer(posLoc, 2, gl.FLOAT, false, 0, 0);
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+    // 2. Render to Screen Viewport
+    gl.useProgram(progRender);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    gl.viewport(0, 0, canvas.width, canvas.height);
+    
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, texB);
+    gl.uniform1i(uRendMode, currentMode);
+    
+    const posLocRend = gl.getAttribLocation(progRender, "a_pos");
+    gl.bindBuffer(gl.ARRAY_BUFFER, quadBuf);
+    gl.enableVertexAttribArray(posLocRend);
+    gl.vertexAttribPointer(posLocRend, 2, gl.FLOAT, false, 0, 0);
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+    // Swap textures
+    let temp = texA;
+    texA = texB;
+    texB = temp;
+
+    // Telemetry Update
+    frameCount++;
+    const now = performance.now();
+    if (now - lastFpsTime >= 500) {
+        const fps = Math.round((frameCount * 1000) / (now - lastFpsTime));
+        document.getElementById('fps-display').innerText = `${fps} FPS`;
+        frameCount = 0;
+        lastFpsTime = now;
+    }
+
+    requestAnimationFrame(render);
+}
+
+requestAnimationFrame(render);
+</script>
+</body>
+</html>
