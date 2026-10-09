@@ -148,29 +148,65 @@ vec3 skyL(vec3 d){
   float u=atan(d.x,d.z)/(2.*PI)+0.5; return texture(uSky,vec2(u,v)).rgb;
 }
 
-// ---------------- BOAT SDF ----------------
+// ---------------- SLEEK LUXURY SPEEDBOAT SDF (Riva / Chris-Craft Style) ----------------
 float sdBox(vec3 p, vec3 b){ vec3 q=abs(p)-b; return length(max(q,0.)) + min(max(q.x,max(q.y,q.z)),0.); }
+
 float sdBoat(vec3 p){
-  vec3 q=p; q.x*=1.-0.13*q.z; q.x*=1.+0.06*clamp(-q.z,0.,10.); 
-  float base=sdBox(q, vec3(1.1,0.6,3.1));
-  float inside=sdBox(q-vec3(0.,0.35,0.), vec3(0.9,0.7,2.9));
-  float boat=max(base,-inside);
-  float s1=sdBox(q-vec3(0.,0.1,1.5), vec3(0.8,0.05,0.4));
-  float s2=sdBox(q-vec3(0.,0.1,-1.5), vec3(0.9,0.05,0.4));
-  float s3=sdBox(q-vec3(0.,0.1,0.), vec3(1.0,0.05,0.4));
-  return min(boat, min(s1,min(s2,s3)));
+  // p: local boat coordinate frame (+Z=bow, -Z=stern, +Y=up, +X=starboard)
+  float bowT = clamp((p.z - 0.2) / 2.6, 0.0, 1.0);
+  float sternT = clamp((-p.z - 1.0) / 1.5, 0.0, 1.0);
+  float halfWidth = 1.15 * (1.0 - 0.72 * bowT * bowT) * (1.0 - 0.12 * sternT);
+  float sheer = 0.28 * bowT * bowT;
+  
+  // V-bottom hydrodynamic hull
+  float hullBottom = -0.55 + abs(p.x) * 0.40 - sheer * 0.4;
+  float hullTop = 0.42 + sheer;
+  float hullSides = abs(p.x) - halfWidth;
+  float hullLength = max(-p.z - 2.5, p.z - 2.8);
+  float hull = max(hullSides, max(hullLength, max(-p.y + hullBottom, p.y - hullTop)));
+  
+  // Cockpit tub hollow (seating area)
+  float cockW = halfWidth - 0.15;
+  float cockL = max(-p.z - 1.5, p.z - 0.65);
+  float cockH = max(-p.y - 0.12, p.y - 0.55);
+  float cockpit = max(abs(p.x) - cockW, max(cockL, cockH));
+  float mainHull = max(hull, -cockpit);
+  
+  // Curved aerodynamic windshield
+  float wsZ = p.z - 0.72;
+  float wsCurve = wsZ + (p.x * p.x) * 0.35;
+  float ws = max(abs(wsCurve) - 0.04, max(abs(p.x) - (halfWidth - 0.05), max(-p.y + 0.38, p.y - 0.76)));
+  
+  // Pilot bucket seats
+  float seatZ = p.z - 0.05;
+  float seat = max(abs(abs(p.x) - 0.42) - 0.26, max(abs(seatZ) - 0.26, max(-p.y - 0.08, p.y - 0.45)));
+  // Rear bench seat
+  float benchZ = p.z + 1.15;
+  float bench = max(abs(p.x) - (halfWidth - 0.25), max(abs(benchZ) - 0.25, max(-p.y - 0.08, p.y - 0.42)));
+  
+  // Outboard engine cowl on transom
+  vec3 engP = p - vec3(0.0, 0.18, -2.75);
+  float engine = max(abs(engP.x) - 0.26, max(abs(engP.y) - 0.45, abs(engP.z) - 0.26));
+  
+  // Bow deck rail
+  vec3 railP = p - vec3(0.0, 0.58 + sheer, 2.0);
+  float rail = max(abs(p.x) - 0.04, max(abs(railP.y) - 0.04, abs(railP.z) - 0.65));
+  
+  return min(mainHull, min(ws, min(seat, min(bench, min(engine, rail)))));
 }
+
 float traceBoat(vec3 ro, vec3 rd, float tmax){
   float t=0.;
-  for(int i=0;i<60;i++){
+  for(int i=0;i<70;i++){
     vec3 p=ro+rd*t; vec3 bp=uBoatInvMat*(p-uBoatPos);
-    if(length(p-uBoatPos)>6. && length(bp)>5.) { t+=length(p-uBoatPos)-4.5; continue; }
+    if(length(p-uBoatPos)>6.5 && length(bp)>5.5) { t+=length(p-uBoatPos)-5.0; continue; }
     float d=sdBoat(bp); if(d<0.002*t) return t;
-    t+=d*0.8; if(t>tmax) return 1e9;
+    t+=d*0.75; if(t>tmax) return 1e9;
   } return 1e9;
 }
+
 vec3 boatNormal(vec3 p){
-  vec2 e=vec2(0.01,0); vec3 bp=uBoatInvMat*(p-uBoatPos); float d=sdBoat(bp);
+  vec2 e=vec2(0.008,0); vec3 bp=uBoatInvMat*(p-uBoatPos); float d=sdBoat(bp);
   vec3 n=vec3(sdBoat(bp+e.xyy)-d, sdBoat(bp+e.yxy)-d, sdBoat(bp+e.yyx)-d);
   return normalize(uBoatMat*n);
 }
@@ -287,18 +323,56 @@ void main(){
   vec3 col; float t=-1.;
 
   if(tMin==tB && tB<1e8){
-    // ===== BOAT =====
+    // ===== LUXURY SPEEDBOAT MATERIAL =====
     t=tB; vec3 p=ro+rd*t; vec3 n=boatNormal(p); vec3 bp=uBoatInvMat*(p-uBoatPos);
-    vec3 alb=vec3(0.5, 0.18, 0.08); // Wood hull
-    if(abs(bp.y-0.1)<0.05) alb=vec3(0.85); // White stripe
-    if(bp.y>0.45) alb=vec3(0.3, 0.12, 0.05); // Wood rim
-    if(sdBox(bp-vec3(0,0.1,0), vec3(0.8,0.5,2.6))<0.0) alb=vec3(0.4, 0.3, 0.2); // Floor / seats
+    vec3 alb=vec3(0.03, 0.07, 0.20); // Midnight Navy Blue Hull
+    float specPow=80.0; float specAmt=0.35;
+    
+    // Windshield (Tinted Cyan Mirror Glass)
+    if(bp.z>0.55 && bp.z<0.95 && bp.y>0.36 && abs(bp.x)<1.1){
+      alb=vec3(0.05, 0.25, 0.35);
+      specPow=200.0; specAmt=0.9;
+    }
+    // Outboard Motor Cowl (Jet Black)
+    else if(bp.z < -2.48){
+      alb=vec3(0.04, 0.04, 0.05);
+      specPow=120.0; specAmt=0.5;
+    }
+    // Mahogany Foredeck & Aft Deck
+    else if((bp.z > 0.65 || bp.z < -1.5) && bp.y > 0.28){
+      float planks = sin(bp.x * 55.0);
+      vec3 mahogany = mix(vec3(0.42, 0.16, 0.05), vec3(0.58, 0.24, 0.08), planks*0.5+0.5);
+      alb = mahogany;
+      specPow=90.0; specAmt=0.4;
+    }
+    // Pilot Seats & Rear Bench (Cream Leather)
+    else if(bp.y > -0.05 && ((abs(bp.z - 0.05) < 0.32 && abs(bp.x) < 0.75) || (abs(bp.z + 1.15) < 0.32))){
+      alb = vec3(0.88, 0.85, 0.76); // Luxury cream leather
+      specPow=25.0; specAmt=0.15;
+    }
+    // Waterline Gold Pinstripe
+    else if(abs(bp.y + 0.12) < 0.035){
+      alb = vec3(0.88, 0.72, 0.22); // Gold leaf stripe
+      specPow=120.0; specAmt=0.6;
+    }
+    // White Nautical Gelcoat (Below Waterline)
+    else if(bp.y < -0.12){
+      alb = vec3(0.92, 0.94, 0.96); // Pure crisp white
+      specPow=60.0; specAmt=0.3;
+    }
 
     float sh=softShadow(p+n*0.2,L)*cloudShadow(p,L); float dif=max(dot(n,L),0.);
-    float ao=1.0; if(bp.y<0.4 && abs(bp.x)<0.9 && abs(bp.z)<2.4) ao=clamp(0.2+0.8*((bp.y+0.3)*1.5),0.,1.);
+    float ao=1.0; if(bp.y<0.3 && abs(bp.x)<0.9 && bp.z>-1.6 && bp.z<0.7) ao=clamp(0.3+0.7*((bp.y+0.2)*1.8),0.2,1.);
     vec3 bounceDir=normalize(vec3(-L.x,0.,-L.z));
-    vec3 lin=sunCol*dif*sh + skyUp*(0.3+0.7*n.y)*ao + skyHz*0.25*clamp(dot(n,normalize(vec3(L.x,0.,L.z))),0.,1.)*ao + sunCol*alb*0.15*clamp(dot(n,bounceDir)*0.5+0.5,0.,1.)*ao;
-    col=alb*lin + sunCol*pow(max(dot(n,normalize(L-rd)),0.),30.)*0.1*sh;
+    vec3 lin=sunCol*dif*sh + skyUp*(0.35+0.65*n.y)*ao + skyHz*0.25*clamp(dot(n,normalize(vec3(L.x,0.,L.z))),0.,1.)*ao + sunCol*alb*0.15*clamp(dot(n,bounceDir)*0.5+0.5,0.,1.)*ao;
+    
+    // Specular highlight and mirror reflection
+    vec3 H = normalize(L - rd);
+    float spec = pow(max(dot(n, H), 0.0), specPow) * specAmt * sh;
+    vec3 R = reflect(rd, n); R.y = abs(R.y);
+    vec3 refl = skyL(R);
+    float fresnel = pow(1.0 - max(dot(-rd, n), 0.0), 5.0);
+    col = alb*lin + sunCol*spec + refl*fresnel*(specAmt*0.8);
 
   } else if(tMin==tT && tT<1e8){
     // ===== TERRAIN =====
@@ -501,8 +575,37 @@ function seaMap(px, pz, it, t) {
 let spawnX = -18.0, spawnZ = -662.0;
 const player = { pos:[spawnX, terrainH(spawnX,spawnZ,6)+1.6, spawnZ], vel:[0,0,0], onGround:true, state:'walk' };
 let boatSpawnX = -18.0, boatSpawnZ = -655.0;
-let boatSpawnY = seaMap(boatSpawnX, boatSpawnZ, 4, 0);
-const boat = { pos:[boatSpawnX, boatSpawnY, boatSpawnZ], vel:[0,0,0], yaw:0.0, mat:[1,0,0,0,1,0,0,0,1], invMat:[1,0,0,0,1,0,0,0,1] };
+const boat = { 
+    pos:[boatSpawnX, boatSpawnY, boatSpawnZ], 
+    vel:[0,0,0], 
+    yaw:0.0, 
+    pitch:0.0, 
+    roll:0.0, 
+    mat:[1,0,0, 0,1,0, 0,0,1], 
+    invMat:[1,0,0, 0,1,0, 0,0,1] 
+};
+
+function makeBoatMatrix(yaw, pitch, roll) {
+    let cy = Math.cos(yaw), sy = Math.sin(yaw);
+    let cp = Math.cos(pitch), sp = Math.sin(pitch);
+    let cr = Math.cos(roll), sr = Math.sin(roll);
+
+    let rX = cy * cr + sy * sp * sr;
+    let rY = cp * sr;
+    let rZ = -sy * cr + cy * sp * sr;
+
+    let uX = -cy * sr + sy * sp * cr;
+    let uY = cp * cr;
+    let uZ = sy * sr + cy * sp * cr;
+
+    let fX = sy * cp;
+    let fY = -sp;
+    let fZ = cy * cp;
+
+    let mat = [ rX, rY, rZ, uX, uY, uZ, fX, fY, fZ ];
+    let invMat = [ rX, uX, fX, rY, uY, fY, rZ, uZ, fZ ];
+    return { mat, invMat, fwd: [fX, fY, fZ], up: [uX, uY, uZ], right: [rX, rY, rZ] };
+}
 const cam = { pos:[spawnX, terrainH(spawnX,spawnZ,6)+1.6, spawnZ], yaw:0.0, pitch:-0.05 };
 
 const keys={}; let ePressed = false;
@@ -627,7 +730,10 @@ window.rebootPhysics = function() {
     boat.pos = [bX, sY, bZ];
     boat.vel = [0, 0, 0];
     boat.yaw = 0.0;
+    boat.pitch = 0.0;
+    boat.roll = 0.0;
     cam.yaw = 0.0;
+    cam.pitch = -0.05;
     player.state = 'walk';
     if ($('btn-toggle-boat')) $('btn-toggle-boat').textContent = '🚤 Drive Boat (E)';
 };
@@ -866,26 +972,46 @@ function loop(now){
       shockWavePulse = Math.max(0, shockWavePulse - dt * 2.0);
   }
 
-  // Boat Orientation from wave gradient
+  // Dynamic Wave Sampling & Orthonormal Attitude Filtering
   let hC = seaMap(boat.pos[0], boat.pos[2], 4, simTime);
-  let hF = seaMap(boat.pos[0] + bf[0]*2.5, boat.pos[2] + bf[2]*2.5, 4, simTime);
-  let br = [Math.sin(boat.yaw - Math.PI/2), 0, Math.cos(boat.yaw - Math.PI/2)];
-  let hR = seaMap(boat.pos[0] + br[0]*1.2, boat.pos[2] + br[2]*1.2, 4, simTime);
+  let bfX = Math.sin(boat.yaw), bfZ = Math.cos(boat.yaw);
+  let hF = seaMap(boat.pos[0] + bfX*2.5, boat.pos[2] + bfZ*2.5, 4, simTime);
+  let hB = seaMap(boat.pos[0] - bfX*2.5, boat.pos[2] - bfZ*2.5, 4, simTime);
   
-  let fW = [bf[0]*2.5, hF-hC, bf[2]*2.5]; let fwLen = Math.hypot(fW[0], fW[1], fW[2]) || 1; fW = [fW[0]/fwLen, fW[1]/fwLen, fW[2]/fwLen];
-  let rW = [br[0]*1.2, hR-hC, br[2]*1.2]; let rwLen = Math.hypot(rW[0], rW[1], rW[2]) || 1; rW = [rW[0]/rwLen, rW[1]/rwLen, rW[2]/rwLen];
-  let uW = [ rW[1]*fW[2]-rW[2]*fW[1], rW[2]*fW[0]-rW[0]*fW[2], rW[0]*fW[1]-rW[1]*fW[0] ];
-  let uwLen = Math.hypot(uW[0], uW[1], uW[2]) || 1; uW = [uW[0]/uwLen, uW[1]/uwLen, uW[2]/uwLen];
-  rW = [ fW[1]*uW[2]-fW[2]*uW[1], fW[2]*uW[0]-fW[0]*uW[2], fW[0]*uW[1]-fW[1]*uW[0] ];
-  boat.mat = [ rW[0], rW[1], rW[2], uW[0], uW[1], uW[2], fW[0], fW[1], fW[2] ];
-  boat.invMat = [ rW[0], uW[0], fW[0], rW[1], uW[1], fW[1], rW[2], uW[2], fW[2] ];
+  let brX = bfZ, brZ = -bfX; // Starboard perpendicular (+X in local frame)
+  let hR = seaMap(boat.pos[0] + brX*1.2, boat.pos[2] + brZ*1.2, 4, simTime);
+  let hL = seaMap(boat.pos[0] - brX*1.2, boat.pos[2] - brZ*1.2, 4, simTime);
 
+  let forwardSpd = Math.hypot(boat.vel[0], boat.vel[2]);
+  let speedTrim = Math.min(0.08, forwardSpd * 0.0035); // hydrodynamic bow-up planing lift
+
+  let pitchTarget = Math.atan2(hF - hB, 5.0) + speedTrim;
+  pitchTarget = Math.max(-0.20, Math.min(0.24, pitchTarget));
+  boat.pitch += (pitchTarget - boat.pitch) * Math.min(1.0, 8.0 * dt);
+
+  let bankInput = (keys.KeyA || keys.ArrowLeft ? -0.14 : 0) + (keys.KeyD || keys.ArrowRight ? 0.14 : 0);
+  let rollTarget = Math.atan2(hR - hL, 2.4) + bankInput * Math.min(1.0, forwardSpd * 0.08);
+  rollTarget = Math.max(-0.22, Math.min(0.22, rollTarget));
+  boat.roll += (rollTarget - boat.roll) * Math.min(1.0, 8.0 * dt);
+
+  let bFrame = makeBoatMatrix(boat.yaw, boat.pitch, boat.roll);
+  boat.mat = bFrame.mat;
+  boat.invMat = bFrame.invMat;
 
   // ==============================================================
   // 3) CAMERA POSITIONING & AUDIO
   // ==============================================================
-  if (player.state === 'walk') cam.pos = [player.pos[0], player.pos[1] + 1.6, player.pos[2]];
-  else cam.pos = [boat.pos[0] - fW[0]*4.5 + uW[0]*2.2, boat.pos[1] - fW[1]*4.5 + uW[1]*2.2, boat.pos[2] - fW[2]*4.5 + uW[2]*2.2];
+  if (player.state === 'walk') {
+      cam.pos = [player.pos[0], player.pos[1] + 1.6, player.pos[2]];
+  } else {
+      let fwd = bFrame.fwd;
+      let up = bFrame.up;
+      cam.pos = [
+          boat.pos[0] - fwd[0]*5.2 + up[0]*2.2,
+          boat.pos[1] - fwd[1]*5.2 + up[1]*2.2,
+          boat.pos[2] - fwd[2]*5.2 + up[2]*2.2
+      ];
+  }
 
   if (actx) {
       let spd = player.state==='walk' ? Math.hypot(player.vel[0], player.vel[2]) : Math.hypot(boat.vel[0], boat.vel[2]);
