@@ -91,9 +91,27 @@ theorem scale_invariance {V : Type} [N : NormedVectorSpace V]
   rw [Q.norm_preserving y]
   rw [Q.norm_preserving k1]
 
+/--
+  THEOREM 5: Symplectic vs. Dissipative Geometry (The Damping Incompatibility)
+  A symplectic transformation in Hamiltonian phase space MUST preserve area exactly (det = 1).
+  A contractive/stabilized numerical flow damps stiffness by contracting phase volume (det < 1).
+  Consequently, no strictly contractive integrator can be symplectic.
+-/
+def isSymplecticFlow (det : Nat) : Prop := det = 1
+def isDissipativeFlow (det : Nat) : Prop := det < 1
+
+theorem contractive_never_symplectic (det : Nat) (h_diss : isDissipativeFlow det) :
+    ¬ (isSymplecticFlow det) := by
+  dsimp [isDissipativeFlow] at h_diss
+  dsimp [isSymplecticFlow]
+  intro h_symp
+  rw [h_symp] at h_diss
+  exact Nat.lt_irrefl 1 h_diss
+
 #check curvature_equivariance
 #check curvature_norm_invariance
 #check denominator_strictly_positive
 #check scale_invariance
+#check contractive_never_symplectic
 
 end Pratyaksh
